@@ -236,10 +236,10 @@ captures(id, user_id, kind[text|url|image|voice|import], raw_text, url,
          error, created_at)
 media(id, capture_id, platform, author, caption, transcript, location_tag,
       thumbnail_path, keyframe_paths[], video_path, fetched_at)
-ideas(id, capture_id, title, summary, category, tags[], best_months[],
+ideas(id, capture_id, title, summary, category, tags[], best_months[], good_months[],
       budget_level, trip_length_hint, status[someday|shortlist|planned|done|dismissed],
       notes, created_by, created_at, ai_model, ai_confidence)
-places(id, name, type, lat, lng, country_code, region, city, osm_id, geocoder, created_at)
+places(id, name, type, lat, lng, country_code, country, region, city, osm_id, geocoder, created_at)
 idea_places(idea_id, place_id, role[primary|mentioned])
 hearts(idea_id, user_id)
 conversations(id, scope[idea|place|region|global], scope_id, created_by)

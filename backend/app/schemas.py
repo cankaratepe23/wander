@@ -35,3 +35,43 @@ class CaptureOut(BaseModel):
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
         return value.isoformat()
+
+
+class PlaceOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    type: str
+    lat: float
+    lng: float
+    country_code: str | None
+    country: str | None
+    region: str | None
+    city: str | None
+
+
+class IdeaOut(BaseModel):
+    id: int
+    capture_id: int | None
+    title: str
+    summary: str | None
+    category: str
+    family: str
+    tags: list[str]
+    best_months: list[int]
+    good_months: list[int]
+    budget_level: int | None
+    trip_length_hint: str | None
+    status: str
+    created_by: str
+    created_at: datetime
+    places: list[PlaceOut]
+    hearted_by: list[str]
+    hearted_by_me: bool
+
+    @field_serializer("created_at")
+    def _utc(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat()

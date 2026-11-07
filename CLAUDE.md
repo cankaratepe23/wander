@@ -19,6 +19,7 @@ Read it before starting any phase. When a decision changes, update `PLAN.md` in 
 ```bash
 cd backend && WANDER_DEV_MODE=true uv run uvicorn --factory app.main:create_app --reload
 cd backend && WANDER_DEV_MODE=true uv run python -m app.worker
+cd backend && WANDER_DEV_MODE=true uv run python -m app.seed      # demo ideas for the globe (empty DB only)
 cd frontend && npm run dev          # http://localhost:5173
 cd backend && uv run pytest -q && uv run ruff check . && uv run ruff format --check .
 ```
