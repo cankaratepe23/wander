@@ -173,6 +173,23 @@ This gets its own research step, **Phase 1a**, before any Phase 1 screen is buil
 - look for Claude skills and tooling for UI design work;
 - end with a short design-system doc (tokens + key screens), approved before building.
 
+**Phase 1a findings so far (2026-11-07).** Three directions are mocked up as phone screens (Capture, Globe,
+Idea card, each in light and dark): *Meridian* (clean modern), *Postcard* (sunlit, playful) and *Nightfall*
+(night-sky globe). The UI stack researched for whichever wins, with versions current on 2026-11-07 and each at
+least two weeks old:
+
+| Concern | Pick | Notes |
+|---|---|---|
+| Styling | Tailwind CSS 4.3 (`@theme` tokens as CSS variables) | Light/dark via token swap; CSS Modules is the zero-dependency fallback |
+| Primitives | Base UI 1.9 (`@base-ui/react`) | Unstyled and accessible; its **Drawer** replaces `vaul`, which is unmaintained |
+| Motion | Motion 14 (`layoutId` shared elements, gestures) + React 19.3 `<ViewTransition>` for whole-view swaps | View transitions: iOS 18+ |
+| Map | **MapLibre GL JS 6.15** (v6: ESM-only, WebGL2) + `@vis.gl/react-maplibre` 8.1 | Globe + atmosphere, native clustering and heatmap; custom style per direction edited in Maputnik, based on OpenFreeMap |
+| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | e.g. Fraunces + Bricolage Grotesque, Geist, Space Grotesk + Inter |
+| Icons | Tabler or Lucide | Phosphor's React package hasn't shipped since May 2025 |
+
+Browser notes: iOS Safari is the constraint. Scroll-driven animations need iOS 26 and anchor positioning iOS 27,
+so both need fallbacks; OKLCH, `@starting-style` and `light-dark()` are safe.
+
 ### 4.8 Out of scope for now (the obvious next step)
 
 **Trips.** Promote a hotspot to a *Trip*, pull its ideas in, and have Claude draft a day-by-day
@@ -188,7 +205,7 @@ until v1 has been lived with for a while.
 | Backend | **Python 3.13 + FastAPI** | `yt-dlp`, `faster-whisper` and the Anthropic SDK are native Python, and FastAPI is small and typed |
 | Worker | Same image, second process (`python -m app.worker`) polling a jobs table | No Redis or broker. One worker is plenty for two people |
 | DB | **SQLite (WAL)** on a data volume | One file, trivially backed up, more than enough for two users. Places carry lat/lng columns, and spatial work happens in Python or on the client. Postgres + PostGIS only if this ever hurts |
-| Frontend | **React + Vite + TypeScript** PWA (`vite-plugin-pwa`) with MapLibre; UI system chosen in Phase 1a | Large ecosystem, and served as static files by FastAPI, so it's still one container |
+| Frontend | **React + Vite + TypeScript** PWA (`vite-plugin-pwa`) with MapLibre v6; UI stack in §4.7 (Phase 1a) | Large ecosystem, and served as static files by FastAPI, so it's still one container |
 | AI | Anthropic Python SDK, structured outputs, prompt caching | See §6 |
 | Media | `yt-dlp`, `ffmpeg`, `faster-whisper` (`small`, int8, CPU) | All local and free |
 | Geocoding | Nominatim / Photon (public) | Free at this volume, with Google Places as a later swap if quality disappoints |
