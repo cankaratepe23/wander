@@ -197,7 +197,12 @@ pages. The plain globe (flat ocean and land, graticule, hairline rim) works in b
 - No glows and no gradients. A pin's shape carries data: how many ideas, which kind, or who saved them.
 - Nearby places merge into one pin at globe zoom and split apart as you zoom in (MapLibre clustering). A merged pin
   is named after the area it covers when there is one, such as "Italy".
-- Four candidates are on the canvas: **piles** (one isometric tile per idea, coloured by category; the leading
+- **Piles chosen (2026-11-08)**, and they are dynamic. Every idea keeps its own geocoded point, and the map
+  clusters by screen distance at each zoom (MapLibre/supercluster). Zooming out merges piles and zooming in splits
+  them, with tiles animating from the parent pile to its children. A cluster sums its category counts so the tiles
+  keep their colours. It is named by the lowest admin level all its members share (city, region, country; from
+  the geocoder's address), so its name always matches what it covers.
+- Four candidates were on the canvas: **piles** (one isometric tile per idea, coloured by category; the leading
   pick, because Save can drop a tile onto its pile), **flags** (height = count), **rosettes** (one tick per idea,
   coloured by who saved it, long when both ♥ it) and **callouts** (leader lines for big places, plain dots elsewhere).
 
