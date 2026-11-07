@@ -1,6 +1,6 @@
 # Wander: design & implementation plan
 
-*Status (2026-11-07): Phase 0 done and deployed. Next: Phase 1a (design language).*
+*Status (2026-11-07): Phase 0 done and deployed. Phase 1a (design language) in progress: Meridian chosen, pin style next.*
 
 ## 1. The problem
 
@@ -184,11 +184,22 @@ least two weeks old:
 | Primitives | Base UI 1.9 (`@base-ui/react`) | Unstyled and accessible; its **Drawer** replaces `vaul`, which is unmaintained |
 | Motion | Motion 14 (`layoutId` shared elements, gestures) + React 19.3 `<ViewTransition>` for whole-view swaps | View transitions: iOS 18+ |
 | Map | **MapLibre GL JS 6.15** (v6: ESM-only, WebGL2) + `@vis.gl/react-maplibre` 8.1 | Globe + atmosphere, native clustering and heatmap; custom style per direction edited in Maputnik, based on OpenFreeMap |
-| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | e.g. Fraunces + Bricolage Grotesque, Geist, Space Grotesk + Inter |
+| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | Geist + Geist Mono (Meridian) |
 | Icons | Tabler or Lucide | Phosphor's React package hasn't shipped since May 2025 |
 
 Browser notes: iOS Safari is the constraint. Scroll-driven animations need iOS 26 and anchor positioning iOS 27,
 so both need fallbacks; OKLCH, `@starting-style` and `light-dark()` are safe.
+
+**Direction chosen (2026-11-07): Meridian.** It uses neutral surfaces, one cobalt accent, Geist and Geist Mono, and
+hairline borders. Postcard and Nightfall were set aside because their palettes and fonts read as stock AI-generated
+pages. The plain globe (flat ocean and land, graticule, hairline rim) works in both themes. What failed is the
+"dot plus blurred glow" pin, which looks generic. The pin rules are:
+- No glows and no gradients. A pin's shape carries data: how many ideas, which kind, or who saved them.
+- Nearby places merge into one pin at globe zoom and split apart as you zoom in (MapLibre clustering). A merged pin
+  is named after the area it covers when there is one, such as "Italy".
+- Four candidates are on the canvas: **piles** (one isometric tile per idea, coloured by category; the leading
+  pick, because Save can drop a tile onto its pile), **flags** (height = count), **rosettes** (one tick per idea,
+  coloured by who saved it, long when both ♥ it) and **callouts** (leader lines for big places, plain dots elsewhere).
 
 ### 4.8 Out of scope for now (the obvious next step)
 
