@@ -1,0 +1,25 @@
+# Local smoke test of the production image: docker compose -f docker-compose.dev.yml up --build
+# Then open http://localhost:8000. Auth is OFF (dev mode): never use this file for a real deployment.
+
+services:
+  wander-api:
+    build: .
+    image: wander:dev
+    environment:
+      WANDER_DEV_MODE: "true"
+      WANDER_DEV_USER_EMAIL: "alex@localhost"
+    volumes:
+      - ./.devdata:/data
+    ports:
+      - "127.0.0.1:8000:8000"
+
+  wander-worker:
+    image: wander:dev
+    command: ["python", "-m", "app.worker"]
+    environment:
+      WANDER_DEV_MODE: "true"
+    volumes:
+      - ./.devdata:/data
+    depends_on:
+      wander-api:
+        condition: service_healthy

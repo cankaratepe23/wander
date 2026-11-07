@@ -1,0 +1,174 @@
+:root {
+  --bg: #f7f6f2;
+  --surface: #ffffff;
+  --text: #1c1b19;
+  --muted: #6b6860;
+  --border: #e4e1d8;
+  --accent: #0f766e;
+  --accent-text: #ffffff;
+  --warn-bg: #fdf3d7;
+  --warn-text: #7a5300;
+  --ok-bg: #dcf3ee;
+  --ok-text: #0b5a53;
+  --err-bg: #fbe1df;
+  --err-text: #8a1c14;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #141412;
+    --surface: #1e1d1a;
+    --text: #ecebe6;
+    --muted: #a19e94;
+    --border: #34322d;
+    --accent: #2dd4bf;
+    --accent-text: #052e2b;
+    --warn-bg: #3a2f12;
+    --warn-text: #f3d58a;
+    --ok-bg: #12332f;
+    --ok-text: #8fe6d8;
+    --err-bg: #3b1714;
+    --err-text: #f5a39b;
+    color-scheme: dark;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+
+.shell {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 16px 48px;
+}
+
+.top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.brand {
+  font-size: 1.5rem;
+  margin: 8px 0 16px;
+  letter-spacing: -0.02em;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.capture {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px;
+  margin-bottom: 28px;
+}
+
+.capture textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: vertical;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 1.05rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flash {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+button {
+  background: var(--accent);
+  color: var(--accent-text);
+  border: none;
+  border-radius: 10px;
+  padding: 10px 20px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.section-title {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.item {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+}
+
+.item-text {
+  overflow-wrap: anywhere;
+}
+
+.item-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-top: 6px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 1px 9px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--border);
+  color: var(--text);
+}
+
+.badge-done {
+  background: var(--ok-bg);
+  color: var(--ok-text);
+}
+
+.badge-needs_review {
+  background: var(--warn-bg);
+  color: var(--warn-text);
+}
+
+.badge-failed {
+  background: var(--err-bg);
+  color: var(--err-text);
+}

@@ -1,0 +1,28 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local data and secrets — never commit
+data/
+.devdata/
+*.db
+*.db-wal
+*.db-shm
+.env
+.env.*
+cookies.txt
+*.cookies
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tsbuildinfo

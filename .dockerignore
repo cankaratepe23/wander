@@ -1,0 +1,14 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/data
+frontend/dist
+.git
+.github
+*.md
+!backend/README.md
+docker-compose*.yml
+.env
+**/.env
