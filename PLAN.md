@@ -1,6 +1,6 @@
 # Wander: design & implementation plan
 
-*Status (2026-11-07): Phase 0 app code done; first deployment in progress.*
+*Status (2026-11-07): Phase 0 done and deployed. Next: Phase 1a (design language).*
 
 ## 1. The problem
 
@@ -288,7 +288,7 @@ Guard rails:
 
 Each phase ends with something both users use, and nothing after Phase 1 blocks capture.
 
-### Phase 0 — Skeleton & plumbing ✅ app code done 2026-11-07
+### Phase 0 — Skeleton & plumbing ✅ done 2026-11-07
 - Repo layout: `backend/` (FastAPI, worker, Alembic migrations), `frontend/` (Vite React PWA shell),
   a multi-stage `Dockerfile`, `docker-compose.dev.yml`, CI to GHCR.
 - Access JWT middleware (`Cf-Access-Jwt-Assertion` → user), with a dev mode that is refused when Access is configured.
