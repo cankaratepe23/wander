@@ -1,6 +1,6 @@
 # Wander: design & implementation plan
 
-*Status (2026-11-07): Phase 0 done and deployed. Phase 1a (design language) in progress: piles chosen, picking a Postcard re-take.*
+*Status (2026-11-08): Phase 0 done and deployed. Phase 1a done (Meridian, `docs/design/meridian.md`). Next: Phase 1.*
 
 ## 1. The problem
 
@@ -184,22 +184,15 @@ least two weeks old:
 | Primitives | Base UI 1.9 (`@base-ui/react`) | Unstyled and accessible; its **Drawer** replaces `vaul`, which is unmaintained |
 | Motion | Motion 14 (`layoutId` shared elements, gestures) + React 19.3 `<ViewTransition>` for whole-view swaps | View transitions: iOS 18+ |
 | Map | **MapLibre GL JS 6.15** (v6: ESM-only, WebGL2) + `@vis.gl/react-maplibre` 8.1 | Globe + atmosphere, native clustering and heatmap; custom style per direction edited in Maputnik, based on OpenFreeMap |
-| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | Chosen with the direction (candidates: Archivo + Courier Prime, Bowlby One + Libre Franklin, Archivo + Martian Mono) |
+| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | Geist + Geist Mono (Meridian); Souvenir would use Bowlby One + Libre Franklin |
 | Icons | Tabler or Lucide | Phosphor's React package hasn't shipped since May 2025 |
 
 Browser notes: iOS Safari is the constraint. Scroll-driven animations need iOS 26 and anchor positioning iOS 27,
 so both need fallbacks; OKLCH, `@starting-style` and `light-dark()` are safe.
 
-**Direction (2026-11-08): Postcard, redone.** On 2026-11-07 Meridian (neutral surfaces, one cobalt accent, Geist,
-hairline borders) led, and Postcard and Nightfall were set aside because their palettes and fonts read as stock
-AI-generated pages. On review the Postcard *idea*, travel paper and ephemera, was preferred over Meridian. Only its
-execution, a mood of sand, terracotta and a soft serif, was the problem. Three re-takes each copy a real object, and
-the piles become that object:
-- **Airmail:** par avion stripes, navy ink, stamp piles, and postmarks that carry real data (source, date, place).
-- **Souvenir:** the mid-century large-letter "Greetings from" card, with postcard piles and a handwritten note.
-- **Ticket:** a departure board of hotspots, a boarding pass per idea, and ticket-stub piles.
+**Direction (decided 2026-11-08): build Meridian, keep Souvenir.** Phase 1a mocked up Meridian, Postcard and Nightfall. Postcard and Nightfall read as stock AI-generated pages. Postcard was then redone as three takes on real travel paper (Airmail, Souvenir, Ticket). Souvenir, the large-letter "Greetings from" card, was the favourite look, but **Meridian is what gets built**. Souvenir is written down in full in `docs/design/souvenir.md` to revisit later, possibly as a second theme on the same token names. The Meridian design system is `docs/design/meridian.md`.
 
-Whichever wins keeps Meridian's lessons below. The plain globe (flat ocean and land, graticule, hairline rim) works in both themes. What failed is the
+The plain globe (flat ocean and land, graticule, hairline rim) works in both themes. What failed is the
 "dot plus blurred glow" pin, which looks generic. The pin rules are:
 - No glows and no gradients. A pin's shape carries data: how many ideas, which kind, or who saved them.
 - Nearby places merge into one pin at globe zoom and split apart as you zoom in (MapLibre clustering). A merged pin
@@ -336,7 +329,7 @@ Each phase ends with something both users use, and nothing after Phase 1 blocks 
 - Deployment: tunnel route, Access app (created *before* the DNS record), pinned image, encrypted secrets.
 - **Done when:** the deployed page greets its user after an Access login, from a phone on mobile data.
 
-### Phase 1a — Design language (before any Phase 1 UI, see §4.7)
+### Phase 1a — Design language ✅ done 2026-11-08 (see §4.7)
 - Research visual directions, the UI stack and Claude design skills, then write a design-system doc.
 - **Done when:** one direction, its tokens and mockups of the capture, map and idea-card screens are approved.
 
@@ -388,3 +381,5 @@ Promote a hotspot to a trip, then itinerary drafting, dates and budget.
 6. **The repository is public** (a portfolio project). It holds no secrets and no deployment-specific
    internals; those live in the operator's private ops repo.
 7. **The UI gets a real design language** (§4.7), researched in Phase 1a before Phase 1 screens are built.
+8. **Meridian is the design system** (2026-11-08, `docs/design/meridian.md`), with dynamic piles as the pins.
+   Souvenir is kept in `docs/design/souvenir.md` to revisit, possibly as a second theme.
