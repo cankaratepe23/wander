@@ -116,3 +116,20 @@ def test_no_auth_configured_refuses_everything(tmp_path):
 def test_dev_mode_cannot_be_combined_with_access(tmp_path):
     with pytest.raises(ValueError):
         Settings(data_dir=tmp_path, dev_mode=True, access_team_domain=TEAM, access_aud=AUD)
+
+
+def test_settings_strip_windows_line_endings(tmp_path, monkeypatch):
+    monkeypatch.setenv("WANDER_ACCESS_TEAM_DOMAIN", f"{TEAM}\r")
+    monkeypatch.setenv("WANDER_ACCESS_AUD", f"{AUD}\r")
+    monkeypatch.setenv("WANDER_ALLOWED_EMAILS", "alex@example.com,sam@example.com\r")
+    s = Settings(data_dir=tmp_path)
+    assert s.access_team_domain == TEAM
+    assert s.access_aud == AUD
+    assert s.allowed_email_set == {"alex@example.com", "sam@example.com"}
+
+
+def test_rejected_token_is_logged_without_the_token(access_client, keypair, caplog):
+    token = make_token(keypair[0], email="alex@example.com", aud="another-app")
+    access_client.get("/api/me", headers={"Cf-Access-Jwt-Assertion": token})
+    assert "rejected Access token: InvalidAudienceError" in caplog.text
+    assert token not in caplog.text

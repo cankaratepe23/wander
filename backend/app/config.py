@@ -8,7 +8,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="WANDER_", env_file=".env", extra="ignore")
+    # str_strip_whitespace: values written on Windows often carry a trailing "\r", which would
+    # otherwise end up inside URLs (e.g. the Access certs URL) and fail in confusing ways.
+    model_config = SettingsConfigDict(
+        env_prefix="WANDER_", env_file=".env", extra="ignore", str_strip_whitespace=True
+    )
 
     # Where the SQLite database and uploaded/archived media live (/data in the container).
     data_dir: Path = Path("./data")

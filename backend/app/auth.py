@@ -9,6 +9,7 @@ Service tokens (the iOS Shortcut, Phase 1) produce JWTs with a ``common_name`` i
 email. They are recognised here but only accepted by endpoints that opt in.
 """
 
+import logging
 from dataclasses import dataclass
 
 import jwt
@@ -19,6 +20,8 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.models import User
+
+log = logging.getLogger("wander.auth")
 
 ACCESS_HEADER = "Cf-Access-Jwt-Assertion"
 ACCESS_COOKIE = "CF_Authorization"
@@ -75,6 +78,9 @@ def resolve_principal(request: Request) -> Principal:
     try:
         principal = verifier.verify(token)
     except jwt.PyJWTError as exc:
+        # Log why (never the token itself): a misconfigured team domain or AUD looks identical
+        # to a forged token from the outside.
+        log.warning("rejected Access token: %s: %s", type(exc).__name__, exc)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid Access token") from exc
 
     allowed = settings.allowed_email_set
