@@ -1,6 +1,6 @@
 # Wander: design & implementation plan
 
-*Status (2026-11-07): Phase 0 done and deployed. Phase 1a (design language) in progress: Meridian chosen, pin style next.*
+*Status (2026-11-07): Phase 0 done and deployed. Phase 1a (design language) in progress: piles chosen, picking a Postcard re-take.*
 
 ## 1. The problem
 
@@ -184,15 +184,22 @@ least two weeks old:
 | Primitives | Base UI 1.9 (`@base-ui/react`) | Unstyled and accessible; its **Drawer** replaces `vaul`, which is unmaintained |
 | Motion | Motion 14 (`layoutId` shared elements, gestures) + React 19.3 `<ViewTransition>` for whole-view swaps | View transitions: iOS 18+ |
 | Map | **MapLibre GL JS 6.15** (v6: ESM-only, WebGL2) + `@vis.gl/react-maplibre` 8.1 | Globe + atmosphere, native clustering and heatmap; custom style per direction edited in Maputnik, based on OpenFreeMap |
-| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | Geist + Geist Mono (Meridian) |
+| Fonts | Self-hosted variable fonts via Fontsource (latin-ext subset for Turkish) | Chosen with the direction (candidates: Archivo + Courier Prime, Bowlby One + Libre Franklin, Archivo + Martian Mono) |
 | Icons | Tabler or Lucide | Phosphor's React package hasn't shipped since May 2025 |
 
 Browser notes: iOS Safari is the constraint. Scroll-driven animations need iOS 26 and anchor positioning iOS 27,
 so both need fallbacks; OKLCH, `@starting-style` and `light-dark()` are safe.
 
-**Direction chosen (2026-11-07): Meridian.** It uses neutral surfaces, one cobalt accent, Geist and Geist Mono, and
-hairline borders. Postcard and Nightfall were set aside because their palettes and fonts read as stock AI-generated
-pages. The plain globe (flat ocean and land, graticule, hairline rim) works in both themes. What failed is the
+**Direction (2026-11-08): Postcard, redone.** On 2026-11-07 Meridian (neutral surfaces, one cobalt accent, Geist,
+hairline borders) led, and Postcard and Nightfall were set aside because their palettes and fonts read as stock
+AI-generated pages. On review the Postcard *idea*, travel paper and ephemera, was preferred over Meridian. Only its
+execution, a mood of sand, terracotta and a soft serif, was the problem. Three re-takes each copy a real object, and
+the piles become that object:
+- **Airmail:** par avion stripes, navy ink, stamp piles, and postmarks that carry real data (source, date, place).
+- **Souvenir:** the mid-century large-letter "Greetings from" card, with postcard piles and a handwritten note.
+- **Ticket:** a departure board of hotspots, a boarding pass per idea, and ticket-stub piles.
+
+Whichever wins keeps Meridian's lessons below. The plain globe (flat ocean and land, graticule, hairline rim) works in both themes. What failed is the
 "dot plus blurred glow" pin, which looks generic. The pin rules are:
 - No glows and no gradients. A pin's shape carries data: how many ideas, which kind, or who saved them.
 - Nearby places merge into one pin at globe zoom and split apart as you zoom in (MapLibre clustering). A merged pin
