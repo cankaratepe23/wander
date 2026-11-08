@@ -37,7 +37,8 @@ function ImportSection({ onImported }: { onImported: () => void }) {
       <span className="t-label text-muted">Import old saves</span>
       <p className="m-0">
         Upload a WhatsApp chat export (.txt or .zip, without media), TikTok's “Download your data” JSON, or Instagram's
-        “Download your information” JSON. Links and travel talk become ideas at half the usual AI cost.
+        “Download your information” JSON. Links and travel talk become ideas at half the usual AI cost. From TikTok, only
+        Favorites are imported: liked videos are skipped, and the export leaves out posts saved only to a collection.
       </p>
       <label
         className={`mt-1 flex h-[42px] cursor-pointer items-center justify-center gap-2 rounded-xl border border-line text-sm font-semibold text-text ${busy ? "opacity-50" : ""}`}

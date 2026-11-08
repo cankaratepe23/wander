@@ -48,6 +48,9 @@ class Signals:
     keyframe_paths: list[Path] = field(default_factory=list)
     video_path: Path | None = None
     duration_s: float | None = None
+    carousel: bool = (
+        False  # a photo post: keyframe_paths are its slides, and its audio is only music
+    )
     notes: list[str] = field(default_factory=list)
 
     def as_prompt(self) -> dict[str, Any]:
@@ -59,7 +62,8 @@ class Signals:
 
 
 PLATFORMS = [
-    ("tiktok", re.compile(r"(^|\.)tiktok\.com$")),
+    # tiktokv.com is the host of every link in a TikTok data export.
+    ("tiktok", re.compile(r"(^|\.)tiktokv?\.com$")),
     ("instagram", re.compile(r"(^|\.)instagram\.com$")),
     ("youtube", re.compile(r"(^|\.)(youtube\.com|youtu\.be)$")),
     (
@@ -222,6 +226,8 @@ def ytdlp_info(url: str, settings: Settings) -> dict[str, Any]:
 
 HASHTAG = re.compile(r"#(\w+)", re.UNICODE)
 IG_SHORTCODE = re.compile(r"instagram\.com/(?:[^/]+/)?(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)")
+TIKTOK_POST = re.compile(r"/(?:video|photo|v)/(\d+)")
+MAX_SLIDES = 35  # a safety limit, not a budget: a slide that isn't read is a place that's lost
 
 
 def instagram_location(
@@ -254,6 +260,75 @@ def instagram_location(
     if loc is None or not loc.name:
         return None
     return loc.name, loc.lat, loc.lng
+
+
+def tiktok_post_id(url: str | None) -> str | None:
+    if not url or detect_platform(url) != "tiktok":
+        return None
+    match = TIKTOK_POST.search(urlparse(url).path)
+    return match.group(1) if match else None
+
+
+def post_key(url: str | None) -> str | None:
+    """One post's identity across its link forms (export, browser, resolved short link)."""
+    post_id = tiktok_post_id(url)
+    return f"tiktok:{post_id}" if post_id else None
+
+
+def tiktok_record(post_id: str, settings: Settings) -> dict[str, Any] | None:
+    """TikTok's raw post record, which holds what yt-dlp's result drops: the location tag and carousel slides.
+
+    Uses a private yt-dlp helper, so it's best effort: None on any failure and the post is read without it.
+    """
+    import yt_dlp
+
+    try:
+        with yt_dlp.YoutubeDL(ytdlp_options(settings)) as ydl:
+            extractor = ydl.get_info_extractor("TikTok")
+            item, status = extractor._extract_web_data_and_status(  # noqa: SLF001
+                f"https://www.tiktok.com/@_/video/{post_id}", post_id
+            )
+    except Exception as exc:  # noqa: BLE001 - extractors fail in many ways
+        log.info("no raw record for TikTok post %s: %s", post_id, exc)
+        return None
+    return item if status == 0 and item else None
+
+
+def apply_tiktok_record(s: Signals, item: dict[str, Any]) -> None:
+    s.caption = s.caption or item.get("desc") or None
+    author = item.get("author") or {}
+    s.author = s.author or author.get("nickname") or author.get("uniqueId") or None
+    poi = item.get("poi") or {}
+    if poi.get("name") and not s.location_tag:
+        address = poi.get("address") or ""
+        wider = [
+            poi.get(k) for k in ("city", "province", "country")
+        ]  # often already in the address
+        parts = [poi["name"], address, *(p for p in wider if p and p not in address)]
+        s.location_tag = ", ".join(dict.fromkeys(p for p in parts if p))
+    stickers = [
+        text
+        for sticker in item.get("stickersOnItem") or []
+        for text in sticker.get("stickerText") or []
+    ]
+    if stickers:
+        line = "Text stickers on the post: " + " | ".join(stickers)
+        s.caption = f"{s.caption}\n\n{line}" if s.caption else line
+    s.carousel = bool((item.get("imagePost") or {}).get("images"))
+    if s.caption:  # the record made up for it
+        s.notes = [n for n in s.notes if "yt-dlp" not in n]
+
+
+def download_slides(client: httpx.Client, item: dict[str, Any], workdir: Path) -> list[Path]:
+    images = (item.get("imagePost") or {}).get("images") or []
+    client.headers["Referer"] = "https://www.tiktok.com/"
+    slides: list[Path] = []
+    for n, image in enumerate(images[:MAX_SLIDES], 1):
+        for url in (image.get("imageURL") or {}).get("urlList") or []:
+            if path := download_image(client, url, workdir / f"slide{n:02d}"):
+                slides.append(path)
+                break
+    return slides
 
 
 def gather(url: str | None, settings: Settings, workdir: Path) -> Signals:
@@ -302,8 +377,18 @@ def gather(url: str | None, settings: Settings, workdir: Path) -> Signals:
                 s.map_hint = f"post's location tag: {loc[0]} at {loc[1]:.5f}, {loc[2]:.5f}"
         if s.platform == "google_maps":
             s.map_hint = google_maps_hint(s.final_url or url) or google_maps_hint(url)
+        record = None
+        if post_id := tiktok_post_id(url) or tiktok_post_id(s.final_url):
+            record = tiktok_record(post_id, settings)
+        if record:
+            apply_tiktok_record(s, record)
         if s.thumbnail_url:
             s.thumbnail_path = download_image(client, s.thumbnail_url, workdir / "thumb")
+        if record and s.carousel:
+            s.keyframe_paths = download_slides(client, record, workdir)
+            s.thumbnail_path = s.thumbnail_path or next(iter(s.keyframe_paths), None)
+            if not s.keyframe_paths:
+                s.notes.append("Couldn't download this carousel's slides.")
     if s.platform == "instagram" and not s.caption and not s.description:
         s.notes.append("Instagram needs a logged-in session to read this post.")
     return s

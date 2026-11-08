@@ -22,7 +22,9 @@ _whisper = None
 
 
 def deepen(signals: Signals, settings: Settings, workdir: Path) -> None:
-    if not signals.url:
+    if (
+        not signals.url or signals.carousel
+    ):  # a carousel's slides are already there; its audio is only music
         return
     if signals.duration_s and signals.duration_s > MAX_VIDEO_SECONDS:
         signals.notes.append("The video is long, so only its caption was read.")

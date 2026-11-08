@@ -93,6 +93,8 @@ capture ──► queue ──► [1] resolve source ──► [2] extract media
    Instagram, which gates most posts behind a login). oEmbed is *not* a reliable caption source: a live test in
    Nov 2026 showed TikTok's oEmbed returning only the iframe HTML, and Meta's tokenless oEmbed (since June 2026)
    returns embed HTML only. It's still used to render an embedded player on the idea card.
+   TikTok's raw post record adds what `yt-dlp`'s result drops: the location tag, text stickers and **every slide of a
+   photo carousel** (which `yt-dlp` sees as audio only, so carousels skip keyframes and transcription).
    Deep mode adds 4–6 keyframes from `ffmpeg` (travel videos usually have "📍 place name" text overlays, which
    Claude reads with vision) and an audio transcript from `faster-whisper`, running locally on CPU. The `small`
    int8 model takes roughly 20–40 s for a 60 s clip on a low-power Intel N150, and it's asynchronous, so nobody waits.
@@ -153,11 +155,16 @@ Two complementary surfaces:
 | Source | How |
 |---|---|
 | **WhatsApp chat** | Chat → *Export chat* (without media) gives a `.txt`. Every link is pulled out, and Claude keeps the travel-related text messages ("let's go to Georgia next year"). |
-| **TikTok** | *Settings → Download your data* (JSON) includes **Favorites** and **Liked** video links. |
+| **TikTok** | *Settings → Download your data* (JSON, the "Likes and Favourites" category is enough) includes **Favorites** video links, which are imported. **Liked** videos are in the file but skipped, since likes aren't travel intent. Collection contents are not in the export, only collection names. |
 | **Instagram** | *Accounts Centre → Download your information* (JSON) includes **saved posts and collections**. |
 
 Imports run through the **Message Batches API at 50% off**, are rate-limited so Instagram doesn't
-flag the parsing account, and all land in a review tray at first.
+flag the parsing account, and all land in a review tray at first. A TikTok post is recognised across
+its link forms (export, browser, resolved short link) by its post ID, so a repeat save, often by the
+other person, becomes a heart.
+
+TikTok's collections aren't importable in the app: listing them needs the person's own login, which
+stays off the server (decision 9). New saves go through *Share → Wander* instead.
 
 ### 4.7 Look and feel: a real design language, not a basic UI
 
@@ -397,3 +404,9 @@ Promote a hotspot to a trip, then itinerary drafting, dates and budget.
 7. **The UI gets a real design language** (§4.7), researched in Phase 1a before Phase 1 screens are built.
 8. **Meridian is the design system** (2026-11-08, `docs/design/meridian.md`), with dynamic piles as the pins.
    Souvenir is kept in `docs/design/souvenir.md` to revisit, possibly as a second theme.
+9. **TikTok backfill is the export plus one one-time collection import** (2026-11-08). The export has every
+   Favorite but not posts saved only to a collection. Those were listed once, with the owner's own login, and fed
+   through the normal import pipeline. A generic "groups of links" import and a browser helper were rejected: they'd
+   be desktop-only and tied to TikTok's undocumented web API, for something that happens once.
+10. **Carousels are read in full** (2026-11-08), up to a 35-slide safety limit. Choosing among slides needs them read
+    first, so places are removed afterwards rather than capped up front.

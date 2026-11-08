@@ -2,11 +2,11 @@
 
 - WhatsApp: "Export chat" (without media) gives a .txt. Every link becomes an item, plus text messages that
   look travel-related (Claude makes the final call, and drops what isn't).
-- TikTok: "Download your data" (JSON) lists Favorites and Likes with video links.
+- TikTok: "Download your data" (JSON) lists Favorites with video links. Likes are in the file but are skipped.
 - Instagram: "Download your information" (JSON) has saved posts and collections.
 
 Each parser is defensive about format drift: it walks the JSON and keeps any post link it finds under
-keys that mean "saved", "favorite" or "liked", rather than relying on one exact layout.
+keys that mean "saved" or "favorite", rather than relying on one exact layout.
 """
 
 import io
@@ -94,7 +94,9 @@ def _links(data: Any, host: str, path_words: tuple[str, ...]) -> list[Item]:
 
 
 def tiktok(data: Any) -> list[Item]:
-    return _links(data, "tiktok", ("favorite", "like"))
+    # Only saved videos. Likes are no signal of travel intent, and TikTok files them under
+    # "Like List/ItemFavoriteList", so a bare "favorite" would match them (and sounds and effects) too.
+    return _links(data, "tiktok", ("favorite videos", "favoritevideo"))
 
 
 def instagram(data: Any) -> list[Item]:

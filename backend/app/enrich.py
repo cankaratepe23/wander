@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app import geocode, sources, understand
@@ -68,13 +68,8 @@ def prepare(
     """Steps 1-2: gather signals (and deep-parse videos). Returns None if the capture needs no Claude call
     (parked, or the same link was already filed)."""
     deps = deps or Deps()
-    if same := already_filed(db, capture):
-        # Saved twice (often once by each person): count it as interest in the existing idea, not a duplicate.
-        if db.get(Heart, (same.id, capture.user_id)) is None:
-            db.add(Heart(idea_id=same.id, user_id=capture.user_id))
-        capture.status = "done"
-        capture.error = f"Already saved as “{same.title}”, so it was hearted for you instead."
-        db.commit()
+    capture.post_key = capture.post_key or sources.post_key(capture.url)
+    if heart_if_filed(db, capture):
         return None
     capture.status = "processing"
     capture.error = None
@@ -83,6 +78,11 @@ def prepare(
     workdir = media_dir(settings, capture.id)
     workdir.mkdir(parents=True, exist_ok=True)
     signals = deps.gather(capture.url, settings, workdir)
+    if capture.post_key is None and (key := sources.post_key(signals.final_url)):
+        capture.post_key = key  # a short link only shows which post it is once it's resolved
+        if heart_if_filed(db, capture):
+            forget_media(settings, capture.id)
+            return None
     if deps.deepen and signals.platform in sources.VIDEO_PLATFORMS:
         try:
             deps.deepen(signals, settings, workdir)
@@ -99,15 +99,31 @@ def prepare(
 
 
 def already_filed(db: Session, capture: Capture) -> Idea | None:
-    """An idea already filed from another capture of exactly the same link, if any."""
+    """An idea already filed from another capture of the same link or the same post, if any."""
     if not capture.url:
         return None
+    same = Capture.url == capture.url
+    if capture.post_key:
+        same = or_(same, Capture.post_key == capture.post_key)
     return db.scalar(
         select(Idea)
         .join(Capture, Idea.capture_id == Capture.id)
-        .where(Capture.url == capture.url, Capture.id != capture.id, Idea.status != "dismissed")
+        .where(same, Capture.id != capture.id, Idea.status != "dismissed")
         .limit(1)
     )
+
+
+def heart_if_filed(db: Session, capture: Capture) -> Idea | None:
+    """Saved twice (often once by each person): count it as interest in the existing idea, not a duplicate."""
+    same = already_filed(db, capture)
+    if same is None:
+        return None
+    if db.get(Heart, (same.id, capture.user_id)) is None:
+        db.add(Heart(idea_id=same.id, user_id=capture.user_id))
+    capture.status = "done"
+    capture.error = f"Already saved as “{same.title}”, so it was hearted for you instead."
+    db.commit()
+    return same
 
 
 def images_for(capture: Capture, settings: Settings, signals: Signals) -> list[Path]:
@@ -117,7 +133,7 @@ def images_for(capture: Capture, settings: Settings, signals: Signals) -> list[P
     if signals.thumbnail_path:
         images.append(signals.thumbnail_path)
     images.extend(signals.keyframe_paths)
-    return images
+    return list(dict.fromkeys(images))
 
 
 def signals_from_media(capture: Capture, media: Media | None, settings: Settings) -> Signals:
@@ -170,6 +186,9 @@ def apply(
         select(Idea).where(Idea.capture_id == capture.id)
     )  # re-enrich updates in place
     if idea is None:
+        # Another copy may have been filed while this one waited, as happens within a batch.
+        if same := heart_if_filed(db, capture):
+            return same
         idea = Idea(capture_id=capture.id, created_by=capture.user_id, reviewed=not imported)
         db.add(idea)
     idea.title = u.title

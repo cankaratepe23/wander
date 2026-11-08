@@ -39,11 +39,9 @@ def test_whatsapp_links_and_travel_talk():
 def test_tiktok_and_instagram_exports():
     tik = {"Activity": {"Favorite Videos": {"FavoriteVideoList": [{"Date": "2026-01-01", "Link": "https://www.tiktokv.com/share/video/1/"}]},
                         "Like List": {"ItemFavoriteList": [{"date": "x", "link": "https://www.tiktokv.com/share/video/2/"}]},
+                        "Favorite Sounds": {"FavoriteSoundList": [{"Date": "x", "Link": "https://m.tiktok.com/music/4"}]},
                         "Video Browsing History": {"VideoList": [{"Link": "https://www.tiktokv.com/share/video/3/"}]}}}  # fmt: skip
-    assert [i.url for i in importers.tiktok(tik)] == [
-        "https://www.tiktokv.com/share/video/1/",
-        "https://www.tiktokv.com/share/video/2/",
-    ]
+    assert [i.url for i in importers.tiktok(tik)] == ["https://www.tiktokv.com/share/video/1/"]
     ig = {"saved_saved_media": [{"title": "someone", "string_map_data": {"Saved on": {"href": "https://www.instagram.com/p/ABC/", "timestamp": 1}}},
                                  {"title": "x", "string_map_data": {"Saved on": {"href": "https://www.instagram.com/someone/"}}}]}  # fmt: skip
     assert [i.url for i in importers.instagram(ig)] == ["https://www.instagram.com/p/ABC/"]

@@ -8,6 +8,7 @@
    tray (ideas start unreviewed). Errors fall back to a normal, individual enrichment.
 """
 
+import json
 import logging
 from datetime import timedelta
 
@@ -23,6 +24,7 @@ from app.sources import detect_platform
 log = logging.getLogger("wander.backfill")
 
 BATCH_SIZE = 200
+MAX_BATCH_BYTES = 200_000_000  # the API's limit is 256 MB, and carousels make requests large
 PACE = {
     "instagram": timedelta(seconds=45),
     "tiktok": timedelta(seconds=6),
@@ -98,24 +100,26 @@ def submit_batch(db: Session, settings: Settings, client=None) -> str | None:
         return None
     client = client or ai.client(settings)
     requests = []
+    included: list[Capture] = []
+    size = 0
     for capture in pending:
         media = db.scalar(select(Media).where(Media.capture_id == capture.id))
         signals = enrich.signals_from_media(capture, media, settings)
         images = enrich.images_for(capture, settings, signals)
-        requests.append(
-            {
-                "custom_id": f"capture-{capture.id}",
-                "params": understand.params(settings, capture.raw_text, signals, images),
-            }
-        )
+        params = understand.params(settings, capture.raw_text, signals, images)
+        size += len(json.dumps(params))
+        if requests and size > MAX_BATCH_BYTES:
+            break  # the rest go in the next batch, scheduled below
+        requests.append({"custom_id": f"capture-{capture.id}", "params": params})
+        included.append(capture)
     batch = client.messages.batches.create(requests=requests)
-    for capture in pending:
+    for capture in included:
         capture.batch_id = batch.id
         capture.error = "Being read in a batch (usually within the hour)."
     poll = jobs.enqueue(db, "poll_batch", {"batch_id": batch.id}, max_attempts=10)
     poll.run_after = utcnow() + POLL_EVERY
     db.commit()
-    log.info("submitted batch %s with %d captures", batch.id, len(pending))
+    log.info("submitted batch %s with %d captures", batch.id, len(included))
     more = db.scalar(
         select(Capture.id).where(
             Capture.prepared_at.is_not(None), Capture.batch_id.is_(None), Capture.status == "queued"

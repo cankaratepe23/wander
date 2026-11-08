@@ -33,6 +33,8 @@ class Capture(Base):
     kind: Mapped[str] = mapped_column(String(16))  # text | url | image | voice | import
     raw_text: Mapped[str | None] = mapped_column(Text)
     url: Mapped[str | None] = mapped_column(Text)
+    # One post's identity across its link forms ("tiktok:<id>"), so repeat saves can be spotted.
+    post_key: Mapped[str | None] = mapped_column(String(64))
     file_path: Mapped[str | None] = mapped_column(Text)  # relative to data_dir
     source_app: Mapped[str | None] = mapped_column(String(32))  # share-target, shortcut, web...
     # queued | processing | done | needs_review | failed
@@ -49,7 +51,10 @@ class Capture(Base):
 
     user: Mapped[User] = relationship()
 
-    __table_args__ = (Index("ix_captures_created_at", "created_at"),)
+    __table_args__ = (
+        Index("ix_captures_created_at", "created_at"),
+        Index("ix_captures_post_key", "post_key"),
+    )
 
 
 class Job(Base):
