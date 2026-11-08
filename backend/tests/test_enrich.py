@@ -56,7 +56,10 @@ def fake_deps(u: Understanding, hits=None, signals: Signals | None = None):
         return (hits or {}).get(query, KAS)
 
     deps = enrich.Deps(
-        gather=lambda url, s, w: signals or Signals(), understand=_understand, geocoder=_geocode
+        gather=lambda url, s, w: signals or Signals(),
+        understand=_understand,
+        geocoder=_geocode,
+        fuzzy_geocoder=lambda query, settings: None,
     )
     return deps, calls
 

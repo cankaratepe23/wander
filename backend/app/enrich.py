@@ -34,6 +34,7 @@ class Deps:
     )
     understand: Callable[..., Understanding] = understand.understand
     geocoder: Callable[[str, Settings], geocode.Hit | None] = geocode.nominatim
+    fuzzy_geocoder: Callable[[str, Settings], geocode.Hit | None] = geocode.photon
     notes: list[str] = field(default_factory=list)
 
 
@@ -246,22 +247,24 @@ def file_idea(
             notes.append(f"Not sure about “{guess.name}”, so it wasn't placed.")
             place_problems = True
             continue
-        hit = deps.geocoder(guess.query, settings)
-        if hit is None and guess.query != f"{guess.name}, {guess.country}":
-            hit = deps.geocoder(f"{guess.name}, {guess.country}", settings)
+        hit, exact = geocode.locate(
+            guess.name, guess.country, guess.query, settings, deps.geocoder, deps.fuzzy_geocoder
+        )
         if hit is None:
             notes.append(f"Couldn't find “{guess.name}” on the map.")
             place_problems = True
             continue
-        place = geocode.find_or_create(db, hit, guess.name, guess.type)
+        if exact:
+            place = geocode.find_or_create(db, hit, guess.name, guess.type)
+        else:
+            notes.append(f"“{guess.name}” isn't on the map, so it's pinned to {hit.name} for now.")
+            place = geocode.find_or_create(db, hit, hit.name, "city")
         if place.id in seen:
             continue
         seen.add(place.id)
         idea.links.append(IdeaPlace(place=place, role="primary" if i == 0 else "mentioned"))
 
-    if not idea.links and draft.places:
-        notes.append(f"{label}No place could be put on the map.")
-    elif not draft.places:
+    if not draft.places:
         notes.append(f"{label}No place was named, so it isn't on the map yet.")
     if draft.confidence < IDEA_CONFIDENCE:
         notes.append(f"{label}Claude wasn't confident about this one.")

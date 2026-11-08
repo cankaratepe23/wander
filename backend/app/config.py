@@ -52,6 +52,7 @@ class Settings(BaseSettings):
 
     # Geocoding: public Nominatim by default (about 1 request per second, which is plenty here).
     geocoder_url: str = "https://nominatim.openstreetmap.org"
+    photon_url: str = "https://photon.komoot.io"
     user_agent: str = "Wander/0.1 (+https://github.com/cankaratepe23/wander)"
 
     # yt-dlp: a Netscape cookies.txt from a throwaway Instagram account (PLAN.md §4.2).

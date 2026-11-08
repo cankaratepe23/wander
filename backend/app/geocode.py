@@ -6,8 +6,11 @@ second and asks for an identifying User-Agent, both of which this module respect
 
 import logging
 import math
+import re
 import threading
 import time
+import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
@@ -66,6 +69,81 @@ def nominatim(query: str, settings: Settings) -> Hit | None:
     if not results:
         return None
     return hit_from(results[0])
+
+
+def photon(query: str, settings: Settings) -> Hit | None:
+    """A fuzzier second opinion, for names Nominatim wants spelled exactly. Best effort: None on any failure."""
+    _throttle()
+    try:
+        r = httpx.get(
+            settings.photon_url.rstrip("/") + "/api/",
+            params={"q": query, "limit": 1, "lang": "en"},
+            headers={"User-Agent": settings.user_agent},
+            timeout=20,
+        )
+        r.raise_for_status()
+        features = r.json().get("features") or []
+    except (httpx.HTTPError, ValueError) as exc:
+        log.info("photon failed for %r: %s", query, exc)
+        return None
+    if not features:
+        return None
+    p = features[0]["properties"]
+    lng, lat = features[0]["geometry"]["coordinates"]
+    osm_type, osm_id = p.get("osm_type"), p.get("osm_id")
+    return Hit(
+        name=p.get("name") or query.split(",")[0],
+        lat=float(lat),
+        lng=float(lng),
+        osm_id=f"{osm_type.lower()}{osm_id}" if osm_type and osm_id else None,
+        country=p.get("country"),
+        country_code=(p.get("countrycode") or "").upper() or None,
+        region=p.get("state"),
+        city=p.get("city") or p.get("county"),
+    )
+
+
+def _words(text: str) -> list[str]:
+    plain = unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+    return re.findall(r"[a-z0-9]+", plain)
+
+
+def names_match(found: str, name: str, query: str) -> bool:
+    """Is a fuzzy result really the place asked for? Photon always answers with something close-sounding."""
+    specific = query.split(",")[0]
+    wanted = set(_words(name)) | set(_words(specific))
+    got = _words(found)
+    if not got:
+        return False
+    shared = [w for w in got if w in wanted]
+    if len(shared) / len(got) < 0.6:
+        return False
+    return len(shared) >= 2 or got[0] in (_words(name)[:1] + _words(specific)[:1])
+
+
+def locate(
+    name: str,
+    country: str,
+    query: str,
+    settings: Settings,
+    primary: Callable[[str, Settings], Hit | None],
+    fuzzy: Callable[[str, Settings], Hit | None],
+) -> tuple[Hit | None, bool]:
+    """Find a place. Returns the hit and whether it's the place itself rather than the area around it."""
+    searches = list(dict.fromkeys([query, f"{name}, {country}"]))
+    for search in searches:
+        if hit := primary(search, settings):
+            return hit, True
+    for search in searches:
+        hit = fuzzy(search, settings)
+        if hit and names_match(hit.name, name, query):
+            return hit, True
+    # Still nothing, so try the area, keeping at least "city, country": "Togoshiya, Shibuya, Tokyo, Japan" → Shibuya.
+    parts = [p.strip() for p in query.split(",")]
+    for start in range(1, len(parts) - 1):
+        if hit := primary(", ".join(parts[start:]), settings):
+            return hit, False
+    return None, False
 
 
 def hit_from(result: dict) -> Hit:
