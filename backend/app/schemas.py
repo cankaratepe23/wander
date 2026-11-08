@@ -64,11 +64,16 @@ class IdeaOut(BaseModel):
     budget_level: int | None
     trip_length_hint: str | None
     status: str
+    notes: str | None = None
     created_by: str
     created_at: datetime
     places: list[PlaceOut]
     hearted_by: list[str]
     hearted_by_me: bool
+    source_url: str | None = None
+    source_platform: str | None = None
+    thumbnail: str | None = None
+    has_video: bool = False
 
     @field_serializer("created_at")
     def _utc(self, value: datetime) -> str:

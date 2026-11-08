@@ -76,7 +76,7 @@ def complete(db: Session, job_id: int) -> None:
 def fail(db: Session, job_id: int, error: str, *, now: datetime | None = None) -> str:
     """Record a failure. Returns the job's new status: 'queued' (will retry) or 'failed'."""
     now = now or utcnow()
-    job = db.get(Job, job_id)
+    job = db.get(Job, job_id, populate_existing=True)
     if job is None:
         return "failed"
     job.last_error = error[:4000]
@@ -90,6 +90,22 @@ def fail(db: Session, job_id: int, error: str, *, now: datetime | None = None) -
         job.run_after = now + delay
     db.commit()
     return job.status
+
+
+def defer(
+    db: Session, job_id: int, delay: timedelta, reason: str, *, now: datetime | None = None
+) -> None:
+    """Put a job back without counting the attempt, e.g. while no API key is configured."""
+    now = now or utcnow()
+    job = db.get(Job, job_id, populate_existing=True)
+    if job is None:
+        return
+    job.status = "queued"
+    job.attempts = max(0, job.attempts - 1)
+    job.run_after = now + delay
+    job.locked_at = None
+    job.last_error = reason[:4000]
+    db.commit()
 
 
 def requeue_stale(db: Session, *, now: datetime | None = None) -> int:

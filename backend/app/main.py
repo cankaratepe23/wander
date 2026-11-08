@@ -18,14 +18,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile  # what request.form() returns
 
-from app import jobs
+from app import ideas_api, jobs
 from app.auth import AccessVerifier, current_user, get_db
 from app.config import Settings, get_settings
 from app.db import make_engine, make_sessionmaker
 from app.migrate import upgrade_to_head
-from app.models import Capture, Heart, Idea, IdeaPlace, User
-from app.schemas import CaptureIn, CaptureOut, IdeaOut, Me, PlaceOut
-from app.taxonomy import family_of
+from app.models import Capture, User
+from app.schemas import CaptureIn, CaptureOut, Me
 
 log = logging.getLogger("wander.api")
 
@@ -177,68 +176,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         )
         return [to_out(c) for c in rows]
 
-    def load_ideas(db: Session, limit: int, idea_id: int | None = None) -> list[Idea]:
-        query = (
-            select(Idea)
-            .options(
-                joinedload(Idea.creator),
-                joinedload(Idea.links).joinedload(IdeaPlace.place),
-                joinedload(Idea.hearts),
-            )
-            .order_by(Idea.created_at.desc(), Idea.id.desc())
-        )
-        if idea_id is not None:
-            query = query.where(Idea.id == idea_id)
-        return list(db.scalars(query.limit(max(1, min(limit, 1000)))).unique())
-
-    @app.get("/api/ideas", response_model=list[IdeaOut])
-    def list_ideas(
-        limit: int = 200, user: User = Depends(current_user), db: Session = Depends(get_db)
-    ) -> list[IdeaOut]:
-        names = {u.id: u.display_name for u in db.scalars(select(User))}
-        return [idea_out(i, user, names) for i in load_ideas(db, limit)]
-
-    @app.post("/api/ideas/{idea_id}/heart", response_model=IdeaOut)
-    def toggle_heart(
-        idea_id: int, user: User = Depends(current_user), db: Session = Depends(get_db)
-    ) -> IdeaOut:
-        if db.get(Idea, idea_id) is None:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "no such idea")
-        existing = db.get(Heart, (idea_id, user.id))
-        if existing:
-            db.delete(existing)
-        else:
-            db.add(Heart(idea_id=idea_id, user_id=user.id))
-        db.commit()
-        db.expire_all()
-        names = {u.id: u.display_name for u in db.scalars(select(User))}
-        return idea_out(load_ideas(db, 1, idea_id)[0], user, names)
-
-    @app.get("/api/map")
-    def map_points(_user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
-        """One GeoJSON point per (idea, place). The client clusters them into piles per zoom."""
-        features = []
-        for idea in load_ideas(db, 1000):
-            both = len(idea.hearts) >= 2
-            for link in idea.links:
-                p = link.place
-                features.append(
-                    {
-                        "type": "Feature",
-                        "geometry": {"type": "Point", "coordinates": [p.lng, p.lat]},
-                        "properties": {
-                            "idea_id": idea.id,
-                            "place_id": p.id,
-                            "name": p.name,
-                            "city": p.city or "",
-                            "region": p.region or "",
-                            "country": p.country or "",
-                            "family": family_of(idea.category),
-                            "both": 1 if both else 0,
-                        },
-                    }
-                )
-        return {"type": "FeatureCollection", "features": features}
+    app.include_router(ideas_api.router)
 
     if settings.static_dir and Path(settings.static_dir).is_dir():
         _mount_spa(app, Path(settings.static_dir))
@@ -260,25 +198,3 @@ def _mount_spa(app: FastAPI, static_dir: Path) -> None:
         if path and candidate.is_file() and candidate.is_relative_to(static_dir.resolve()):
             return FileResponse(candidate)
         return FileResponse(index)
-
-
-def idea_out(idea: Idea, me: User, names: dict[int, str]) -> IdeaOut:
-    return IdeaOut(
-        id=idea.id,
-        capture_id=idea.capture_id,
-        title=idea.title,
-        summary=idea.summary,
-        category=idea.category,
-        family=family_of(idea.category),
-        tags=idea.tags or [],
-        best_months=idea.best_months or [],
-        good_months=idea.good_months or [],
-        budget_level=idea.budget_level,
-        trip_length_hint=idea.trip_length_hint,
-        status=idea.status,
-        created_by=idea.creator.display_name,
-        created_at=idea.created_at,
-        places=[PlaceOut.model_validate(link.place) for link in idea.links],
-        hearted_by=sorted(names.get(h.user_id, "?") for h in idea.hearts),
-        hearted_by_me=any(h.user_id == me.id for h in idea.hearts),
-    )

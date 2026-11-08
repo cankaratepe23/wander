@@ -11,7 +11,8 @@ RUN npm run build
 
 # --- 2. Python runtime ------------------------------------------------------------------------
 FROM python:3.13-slim AS app
-# ffmpeg (keyframes) and faster-whisper arrive in Phase 2; kept out until then to keep the image small.
+# ffmpeg pulls keyframes out of archived videos for Claude to read (Phase 2 deep parsing).
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.13.0 /uv /usr/local/bin/uv
 ENV UV_COMPILE_BYTECODE=1 \

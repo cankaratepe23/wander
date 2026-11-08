@@ -1,4 +1,5 @@
-"""Tables: users, captures and jobs (Phase 0); ideas, places, idea_places and hearts (Phase 1)."""
+"""Tables: users, captures and jobs (Phase 0); ideas, places, idea_places, hearts, media and ai_usage
+(Phase 1-2); conversations and messages (Phase 3)."""
 
 from datetime import UTC, datetime
 from typing import Any
@@ -136,3 +137,77 @@ class Heart(Base):
 
     idea_id: Mapped[int] = mapped_column(ForeignKey("ideas.id"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+
+
+class Media(Base):
+    """What was extracted from a capture's link: caption, transcript and archived files."""
+
+    __tablename__ = "media"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    capture_id: Mapped[int] = mapped_column(ForeignKey("captures.id"), unique=True)
+    platform: Mapped[str | None] = mapped_column(String(32))
+    author: Mapped[str | None] = mapped_column(String(200))
+    title: Mapped[str | None] = mapped_column(Text)
+    caption: Mapped[str | None] = mapped_column(Text)
+    transcript: Mapped[str | None] = mapped_column(Text)
+    location_tag: Mapped[str | None] = mapped_column(String(200))
+    thumbnail_path: Mapped[str | None] = mapped_column(Text)  # relative to data_dir
+    keyframe_paths: Mapped[list[str]] = mapped_column(JSON, default=list)
+    video_path: Mapped[str | None] = mapped_column(Text)
+    video_bytes: Mapped[int | None] = mapped_column(Integer)
+    notes: Mapped[list[str]] = mapped_column(JSON, default=list)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AiUsage(Base):
+    """One row per Claude call, so the app can show what this month has cost."""
+
+    __tablename__ = "ai_usage"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task: Mapped[str] = mapped_column(String(32))  # enrich | chat | import
+    model: Mapped[str] = mapped_column(String(64))
+    input_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    output_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_read_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    cache_write_tokens: Mapped[int] = mapped_column(Integer, default=0)
+    web_searches: Mapped[int] = mapped_column(Integer, default=0)
+    cost_usd: Mapped[float] = mapped_column(Float, default=0.0)
+    batch: Mapped[bool] = mapped_column(default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (Index("ix_ai_usage_created_at", "created_at"),)
+
+
+class Conversation(Base):
+    """A chat thread, scoped to an idea, a place, a region or everything."""
+
+    __tablename__ = "conversations"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    scope: Mapped[str] = mapped_column(
+        String(16), default="global"
+    )  # idea | place | region | global
+    scope_id: Mapped[str | None] = mapped_column(String(100))
+    title: Mapped[str | None] = mapped_column(String(200))
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    messages: Mapped[list["Message"]] = relationship(
+        back_populates="conversation", cascade="all, delete-orphan", order_by="Message.id"
+    )
+
+
+class Message(Base):
+    __tablename__ = "messages"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    conversation_id: Mapped[int] = mapped_column(ForeignKey("conversations.id"))
+    role: Mapped[str] = mapped_column(String(16))  # user | assistant
+    # The API's content blocks, stored as-is so the conversation can be replayed exactly.
+    content: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    conversation: Mapped[Conversation] = relationship(back_populates="messages")

@@ -9,12 +9,13 @@ import logging
 import signal
 import time
 from collections.abc import Callable
+from datetime import timedelta
 from typing import Any
 
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import jobs
+from app import deep, enrich, jobs
 from app.config import get_settings
 from app.db import make_engine, make_sessionmaker
 from app.models import Capture
@@ -33,20 +34,38 @@ def handler(kind: str) -> Callable[[Handler], Handler]:
     return register
 
 
+class Defer(Exception):  # noqa: N818 - it's a signal, not an error
+    """Raised by a handler to try again later without using up an attempt."""
+
+    def __init__(self, reason: str, delay: timedelta = timedelta(minutes=30)) -> None:
+        super().__init__(reason)
+        self.delay = delay
+
+
 @handler("enrich_capture")
 def enrich_capture(db: Session, payload: dict[str, Any]) -> None:
-    """Phase 0 placeholder. Phase 1 replaces this with the real pipeline (PLAN.md §4.2).
-
-    Until then, captures are parked in 'needs_review' with an honest note, so nothing is lost
-    and every one can be re-enriched once the pipeline exists.
-    """
+    """Run the enrichment pipeline (app/enrich.py) for one capture."""
     capture = db.get(Capture, payload["capture_id"])
     if capture is None:
         log.warning("capture %s vanished before enrichment", payload["capture_id"])
         return
-    capture.status = "needs_review"
-    capture.error = "Saved. AI enrichment isn't built yet (Phase 1)."
-    db.commit()
+    settings = get_settings()
+    if not settings.ai_configured:
+        capture.status = "queued"
+        capture.error = "Saved. It will be filed once Claude is connected."
+        db.commit()
+        raise Defer("no Anthropic API key configured")
+    try:
+        enrich.run(
+            db, capture, settings, enrich.Deps(deepen=deep.deepen if settings.deep_parse else None)
+        )
+    except Exception:
+        db.rollback()
+        capture = db.get(Capture, payload["capture_id"])
+        if capture is not None and capture.status == "processing":
+            capture.status = "queued"  # the job retries; show it as waiting, not stuck
+            db.commit()
+        raise
 
 
 def run_one(factory: sessionmaker[Session]) -> bool:
@@ -64,6 +83,10 @@ def run_one(factory: sessionmaker[Session]) -> bool:
             return True
         try:
             fn(db, job.payload)
+        except Defer as d:
+            db.rollback()
+            jobs.defer(db, job.id, d.delay, str(d))
+            log.info("job %s (%s) deferred: %s", job.id, job.kind, d)
         except Exception as exc:  # noqa: BLE001 - any handler failure is retried
             db.rollback()
             new_status = jobs.fail(db, job.id, f"{type(exc).__name__}: {exc}")

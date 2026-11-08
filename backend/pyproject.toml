@@ -11,6 +11,11 @@ dependencies = [
     "pydantic-settings>=2.6",
     "pyjwt[crypto]>=2.10",
     "python-multipart>=0.0.20",
+    "anthropic>=2.3.0",
+    "httpx>=0.28.1",
+    "yt-dlp>=2026.10.21",
+    "faster-whisper>=1.2.1",
+    "curl-cffi>=0.16.3",
 ]
 
 [dependency-groups]

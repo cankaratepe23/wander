@@ -48,12 +48,12 @@ def test_non_image_upload_is_rejected(client):
     assert r.status_code == 415
 
 
-def test_worker_parks_capture_in_needs_review(client):
+def test_worker_keeps_capture_waiting_without_an_api_key(client):
     client.post("/api/capture", json={"text": "Lycian Way"})
     assert run_one(client.app.state.sessionmaker) is True
-    assert run_one(client.app.state.sessionmaker) is False  # queue drained
+    assert run_one(client.app.state.sessionmaker) is False  # deferred, not due yet
     [item] = client.get("/api/captures").json()
-    assert item["status"] == "needs_review"
+    assert item["status"] == "queued"
 
 
 def test_first_url_strips_trailing_punctuation():

@@ -3,7 +3,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import AliasChoices, Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,6 +37,29 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     worker_poll_seconds: float = 2.0
 
+    # Claude (PLAN.md §6). Without a key, captures wait in the queue until one is configured.
+    anthropic_api_key: str = Field(
+        default="", validation_alias=AliasChoices("WANDER_ANTHROPIC_API_KEY", "ANTHROPIC_API_KEY")
+    )
+    enrich_model: str = "claude-opus-5-5"
+    enrich_effort: str = "low"
+    chat_model: str = "claude-opus-5-5"
+    chat_effort: str = "medium"
+
+    # Geocoding: public Nominatim by default (about 1 request per second, which is plenty here).
+    geocoder_url: str = "https://nominatim.openstreetmap.org"
+    user_agent: str = "Wander/0.1 (+https://github.com/cankaratepe23/wander)"
+
+    # yt-dlp: a Netscape cookies.txt from a throwaway Instagram account (PLAN.md §4.2).
+    ytdlp_cookies_file: Path | None = None
+    # Phase 2 deep parsing: keyframes and transcripts, and the video archive cap.
+    deep_parse: bool = True
+    whisper_model: str = "small"
+    video_archive_max_gb: float = 5.0
+
+    # Push notifications for seasonal nudges (PLAN.md §4.5), e.g. https://ntfy.sh/your-topic
+    ntfy_url: str = ""
+
     @model_validator(mode="after")
     def _check_auth_mode(self) -> "Settings":
         access_configured = bool(self.access_team_domain and self.access_aud)
@@ -63,6 +86,14 @@ class Settings(BaseSettings):
     @property
     def uploads_dir(self) -> Path:
         return self.data_dir / "uploads"
+
+    @property
+    def media_dir(self) -> Path:
+        return self.data_dir / "media"
+
+    @property
+    def ai_configured(self) -> bool:
+        return bool(self.anthropic_api_key)
 
 
 @lru_cache
