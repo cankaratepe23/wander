@@ -152,6 +152,7 @@ export default function App() {
           me={me}
           captures={captures.filter((c) => c.status !== "dismissed")}
           ideas={ideas}
+          onOpen={setOpen}
           onSaved={(c) => setCaptures((prev) => [c, ...prev])}
           onQueued={async () => {
             setOutbox({ left: (await pending()).length, signedOut: false });

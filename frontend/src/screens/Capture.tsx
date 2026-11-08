@@ -36,10 +36,35 @@ export function captureText(c: CaptureRow): string {
   return c.raw_text ?? c.url ?? (c.has_file ? "Screenshot" : "");
 }
 
+function RecentBody({ c }: { c: CaptureRow }) {
+  return (
+    <>
+      <span className="flex items-start gap-2.5">
+        <span className="mt-0.5 shrink-0 text-muted">
+          <SourceIcon source={c.source} />
+        </span>
+        <span className="block min-w-0 flex-1">
+          <span className="line-clamp-2 text-[15px] leading-snug">{c.title ?? captureText(c)}</span>
+          {c.title && <span className="mt-0.5 block truncate text-xs text-muted">{captureText(c)}</span>}
+        </span>
+      </span>
+      <span className="mt-2 flex items-center gap-2 text-xs text-muted">
+        <span className="rounded-full px-2 py-0.5 font-semibold" style={statusStyle(c.status)}>
+          {STATUS_LABEL[c.status]}
+        </span>
+        <span className="font-mono">
+          {c.created_by} · {timeAgo(c.created_at)}
+        </span>
+      </span>
+    </>
+  );
+}
+
 export function CaptureScreen({
   me,
   captures,
   ideas,
+  onOpen,
   onSaved,
   onQueued,
   onSettings,
@@ -47,6 +72,7 @@ export function CaptureScreen({
   me: Me;
   captures: CaptureRow[];
   ideas: Idea[];
+  onOpen: (idea: Idea) => void;
   onSaved: (c: CaptureRow) => void;
   onQueued: () => void;
   onSettings: () => void;
@@ -224,7 +250,9 @@ export function CaptureScreen({
         ) : (
           <ul className="m-0 mt-2.5 flex list-none flex-col gap-2 p-0">
             <AnimatePresence initial={false}>
-              {captures.slice(0, 6).map((c) => (
+              {captures.slice(0, 6).map((c) => {
+                const idea = ideas.find((i) => i.capture_id === c.id);
+                return (
                 <motion.li
                   key={c.id}
                   layout={!reduce}
@@ -232,27 +260,24 @@ export function CaptureScreen({
                   animate={{ opacity: 1, y: 0, scale: 1 }}
                   exit={{ opacity: 0 }}
                   transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 380, damping: 30 }}
-                  className="rounded-[14px] border border-line bg-surface px-3.5 py-3"
+                  className="overflow-hidden rounded-[14px] border border-line bg-surface"
                 >
-                  <div className="flex items-start gap-2.5">
-                    <span className="mt-0.5 shrink-0 text-muted">
-                      <SourceIcon source={c.source} />
-                    </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="line-clamp-2 text-[15px] leading-snug">{c.title ?? captureText(c)}</div>
-                      {c.title && <div className="mt-0.5 truncate text-xs text-muted">{captureText(c)}</div>}
+                  {idea ? (
+                    <button
+                      type="button"
+                      onClick={() => onOpen(idea)}
+                      className="block w-full cursor-pointer px-3.5 py-3 text-left active:opacity-70"
+                    >
+                      <RecentBody c={c} />
+                    </button>
+                  ) : (
+                    <div className="px-3.5 py-3">
+                      <RecentBody c={c} />
                     </div>
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-muted">
-                    <span className="rounded-full px-2 py-0.5 font-semibold" style={statusStyle(c.status)}>
-                      {STATUS_LABEL[c.status]}
-                    </span>
-                    <span className="font-mono">
-                      {c.created_by} · {timeAgo(c.created_at)}
-                    </span>
-                  </div>
+                  )}
                 </motion.li>
-              ))}
+                );
+              })}
             </AnimatePresence>
           </ul>
         )}
