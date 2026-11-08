@@ -48,6 +48,7 @@ def access_client(tmp_path, keypair):
         access_team_domain=TEAM,
         access_aud=AUD,
         allowed_emails="alex@example.com, sam@example.com",
+        service_tokens="shortcut-sam.access=sam@example.com",
     )
     app = create_app(settings)
     app.state.access_verifier = AccessVerifier(TEAM, AUD, jwks_client=FakeJWKS(keypair[1]))
@@ -133,3 +134,12 @@ def test_rejected_token_is_logged_without_the_token(access_client, keypair, capl
     access_client.get("/api/me", headers={"Cf-Access-Jwt-Assertion": token})
     assert "rejected Access token: InvalidAudienceError" in caplog.text
     assert token not in caplog.text
+
+
+def test_mapped_service_token_can_only_capture(access_client, keypair):
+    headers = {"Cf-Access-Jwt-Assertion": make_token(keypair[0], common_name="shortcut-sam.access")}
+    r = access_client.post("/api/capture", json={"text": "Kazbegi"}, headers=headers)
+    assert r.status_code == 202 and r.json()["created_by"] == "Sam"
+    assert access_client.get("/api/captures", headers=headers).status_code == 403
+    other = {"Cf-Access-Jwt-Assertion": make_token(keypair[0], common_name="someone-else.access")}
+    assert access_client.post("/api/capture", json={"text": "x"}, headers=other).status_code == 403

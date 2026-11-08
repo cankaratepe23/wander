@@ -59,3 +59,20 @@ def test_worker_keeps_capture_waiting_without_an_api_key(client):
 def test_first_url_strips_trailing_punctuation():
     assert first_url("see (https://example.com/a).") == "https://example.com/a"
     assert first_url("no link here") is None
+
+
+def test_share_target_fallback_saves_and_redirects(client):
+    r = client.post(
+        "/share-target",
+        data={
+            "title": "Hidden coves",
+            "text": "https://vm.tiktok.com/ZM1/",
+            "url": "https://vm.tiktok.com/ZM1/",
+        },
+        files={"media": ("cove.jpg", b"\xff\xd8 fake", "image/jpeg")},
+        follow_redirects=False,
+    )
+    assert r.status_code == 303 and r.headers["location"] == "/#/capture?shared=1"
+    [item] = client.get("/api/captures").json()
+    assert item["kind"] == "image"
+    assert item["raw_text"] == "Hidden coves\nhttps://vm.tiktok.com/ZM1/"

@@ -26,6 +26,10 @@ class Settings(BaseSettings):
     # misconfigured Access policy can't silently open it up. Empty = trust Access alone.
     allowed_emails: str = ""
 
+    # Access service tokens allowed to save captures (the iOS Shortcut), each mapped to the person it
+    # saves for: "<client id>=<email>,<client id>=<email>". Service tokens can do nothing else.
+    service_tokens: str = ""
+
     # Local development only: skip Access and treat every request as dev_user_email.
     # Refused at startup when Access is configured, so it can't be left on in production.
     dev_mode: bool = False
@@ -78,6 +82,11 @@ class Settings(BaseSettings):
     @property
     def allowed_email_set(self) -> set[str]:
         return {e.strip().lower() for e in self.allowed_emails.split(",") if e.strip()}
+
+    @property
+    def service_token_map(self) -> dict[str, str]:
+        pairs = (p.split("=", 1) for p in self.service_tokens.split(",") if "=" in p)
+        return {k.strip(): v.strip().lower() for k, v in pairs if k.strip() and v.strip()}
 
     @property
     def db_path(self) -> Path:

@@ -1,6 +1,6 @@
 # Wander: design & implementation plan
 
-*Status (2026-11-08): Phase 0 done and deployed. Phase 1a done (Meridian, `docs/design/meridian.md`). Phase 1 in progress: the Meridian app (Capture, Inbox, Globe with dynamic piles, idea card) and the ideas/places API are built; next is enrichment v1, then the share target.*
+*Status (2026-11-08): Phase 0 deployed; Phase 1a done (Meridian). Phase 1 built: enrichment pipeline, Android share target with an offline outbox, iOS Shortcut path (`docs/ios-shortcut.md`), editing and Needs a look. It needs an API key and a deploy to meet its done-when.*
 
 ## 1. The problem
 

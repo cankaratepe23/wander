@@ -1,6 +1,7 @@
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { api, ApiError, type Capture as CaptureRow, type Idea, type Me } from "../api";
+import { enqueue } from "../queue";
 import { Icon } from "../components/ui";
 
 export const STATUS_LABEL: Record<CaptureRow["status"], string> = {
@@ -9,6 +10,7 @@ export const STATUS_LABEL: Record<CaptureRow["status"], string> = {
   done: "Filed",
   needs_review: "Needs a look",
   failed: "Failed",
+  dismissed: "Dismissed",
 };
 
 export function statusStyle(s: CaptureRow["status"]): { background: string; color: string } {
@@ -39,11 +41,15 @@ export function CaptureScreen({
   captures,
   ideas,
   onSaved,
+  onQueued,
+  onSettings,
 }: {
   me: Me;
   captures: CaptureRow[];
   ideas: Idea[];
   onSaved: (c: CaptureRow) => void;
+  onQueued: () => void;
+  onSettings: () => void;
 }) {
   const [text, setText] = useState("");
   const [image, setImage] = useState<File | null>(null);
@@ -67,7 +73,16 @@ export function CaptureScreen({
       setImage(null);
       box.current?.focus();
     } catch (e) {
-      setError(e instanceof ApiError ? `Not saved: ${e.message}` : "Not saved. Are you offline?");
+      const unreachable = !(e instanceof ApiError) || e.status === 401 || e.status >= 500;
+      if (unreachable) {
+        // Never lose an idea: keep it on the phone and send it later.
+        await enqueue({ text: text.trim(), files: image ? [image] : [], source_app: "web" });
+        setText("");
+        setImage(null);
+        onQueued();
+      } else {
+        setError(`Not saved: ${e.message}`);
+      }
     } finally {
       setSaving(false);
     }
@@ -83,13 +98,23 @@ export function CaptureScreen({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6" style={{ paddingTop: "max(28px, env(safe-area-inset-top))" }}>
-      <header className="flex flex-col gap-1 px-1.5 pt-4">
-        <h1 className="t-display m-0">
-          {greeting()}, {me.display_name}
-        </h1>
-        <span className="font-mono text-xs text-muted">
-          {ideas.length} ideas · {places} places
-        </span>
+      <header className="flex items-end justify-between gap-3 px-1.5 pt-4">
+        <div className="flex min-w-0 flex-col gap-1">
+          <h1 className="t-display m-0">
+            {greeting()}, {me.display_name}
+          </h1>
+          <span className="font-mono text-xs text-muted">
+            {ideas.length} ideas · {places} places
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onSettings}
+          aria-label="Settings"
+          className="grid size-10 shrink-0 place-items-center rounded-xl border border-line bg-surface text-text"
+        >
+          <Icon name="settings" size={18} />
+        </button>
       </header>
 
       <section className="mt-5 rounded-[22px] border border-line bg-surface p-4 shadow-[0_8px_28px_var(--shadow)]">

@@ -99,15 +99,38 @@ def _default_display_name(email: str) -> str:
     return local.replace(".", " ").replace("_", " ").title()
 
 
+def _user_for(db: Session, email: str) -> User:
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None:
+        user = User(email=email, display_name=_default_display_name(email))
+        db.add(user)
+        db.commit()
+    return user
+
+
 def current_user(
     principal: Principal = Depends(resolve_principal), db: Session = Depends(get_db)
 ) -> User:
     """A person (not a service token). Creates the user row on first sight."""
     if principal.email is None:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "a personal login is required here")
-    user = db.scalar(select(User).where(User.email == principal.email))
-    if user is None:
-        user = User(email=principal.email, display_name=_default_display_name(principal.email))
-        db.add(user)
-        db.commit()
-    return user
+    return _user_for(db, principal.email)
+
+
+def capturing_user(
+    request: Request,
+    principal: Principal = Depends(resolve_principal),
+    db: Session = Depends(get_db),
+) -> User:
+    """Like current_user, but also accepts a configured service token (the iOS Shortcut), which
+    saves on behalf of the person it's mapped to. Only the capture endpoint uses this."""
+    if principal.email is not None:
+        return _user_for(db, principal.email)
+    settings = request.app.state.settings
+    email = settings.service_token_map.get(principal.service_id or "")
+    if not email:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "this service token can't save captures")
+    allowed = settings.allowed_email_set
+    if allowed and email not in allowed:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "email not allowed")
+    return _user_for(db, email)

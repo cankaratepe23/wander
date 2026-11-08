@@ -1,7 +1,7 @@
 import { useState } from "react";
-import type { Capture, Family, Idea } from "../api";
+import { api, type Capture, type Family, type Idea } from "../api";
 import { emptyMix, Pile } from "../components/Pile";
-import { Chip, FAMILIES, FAMILY_LABEL, Heart } from "../components/ui";
+import { Chip, FAMILIES, FAMILY_LABEL, Heart, Icon } from "../components/ui";
 import { captureText, STATUS_LABEL, statusStyle, timeAgo } from "./Capture";
 
 type Filter = "all" | Family | "both" | "review";
@@ -12,18 +12,20 @@ export function InboxScreen({
   onOpen,
   only,
   onClearOnly,
+  onChanged,
 }: {
   ideas: Idea[];
   captures: Capture[];
   onOpen: (idea: Idea) => void;
   only?: { label: string; ids: number[] } | null;
   onClearOnly?: () => void;
+  onChanged: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const pending = captures.filter((c) => c.status !== "done");
+  const pending = captures.filter((c) => c.status !== "done" && c.status !== "dismissed");
   const review = pending.filter((c) => c.status === "needs_review" || c.status === "failed");
 
-  let shown = only ? ideas.filter((i) => only.ids.includes(i.id)) : ideas;
+  let shown = (only ? ideas.filter((i) => only.ids.includes(i.id)) : ideas).filter((i) => i.status !== "dismissed");
   if (filter === "both") shown = shown.filter((i) => i.hearted_by.length >= 2);
   else if (filter !== "all" && filter !== "review") shown = shown.filter((i) => i.family === filter);
 
@@ -77,6 +79,36 @@ export function InboxScreen({
                       {c.created_by} · {timeAgo(c.created_at)}
                     </span>
                   </div>
+                  {(c.status === "needs_review" || c.status === "failed") && (
+                    <div className="mt-2.5 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => api.reenrich(c.id).then(onChanged)}
+                        className="flex h-9 items-center gap-1.5 rounded-xl border border-line px-3 text-[13px] font-semibold"
+                      >
+                        <Icon name="refresh" size={14} />
+                        Try again
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => api.dismiss(c.id).then(onChanged)}
+                        className="h-9 rounded-xl px-3 text-[13px] font-semibold text-muted"
+                      >
+                        Dismiss
+                      </button>
+                      {c.url && (
+                        <a
+                          href={c.url}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="ml-auto flex h-9 items-center gap-1.5 px-1 text-[13px] font-semibold text-accent"
+                        >
+                          <Icon name="link" size={14} />
+                          Open
+                        </a>
+                      )}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>

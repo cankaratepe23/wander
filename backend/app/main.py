@@ -5,13 +5,14 @@ answers immediately. Everything slow happens in the worker (app/worker.py).
 """
 
 import logging
+import mimetypes
 import re
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import ValidationError
 from sqlalchemy import select
@@ -19,7 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile  # what request.form() returns
 
 from app import ideas_api, jobs
-from app.auth import AccessVerifier, current_user, get_db
+from app.auth import AccessVerifier, capturing_user, current_user, get_db
 from app.config import Settings, get_settings
 from app.db import make_engine, make_sessionmaker
 from app.migrate import upgrade_to_head
@@ -27,6 +28,8 @@ from app.models import Capture, User
 from app.schemas import CaptureIn, CaptureOut, Me
 
 log = logging.getLogger("wander.api")
+
+mimetypes.add_type("application/manifest+json", ".webmanifest")  # the PWA manifest
 
 URL_RE = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
 IMAGE_TYPES = {
@@ -119,7 +122,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/api/capture", status_code=status.HTTP_202_ACCEPTED, response_model=CaptureOut)
     async def capture(
-        request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+        request: Request, user: User = Depends(capturing_user), db: Session = Depends(get_db)
     ) -> CaptureOut:
         content_type = request.headers.get("content-type", "")
         upload: UploadFile | None = None
@@ -140,13 +143,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 status.HTTP_422_UNPROCESSABLE_CONTENT, "invalid capture body"
             ) from exc
 
-        text = (data.text or "").strip() or None
-        url = (data.url or "").strip() or first_url(text)
+        row = await store_capture(db, user, data.text, data.url, upload, data.source_app)
+        if row is None:
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "nothing to save")
+        return to_out(row)
+
+    async def store_capture(
+        db: Session,
+        user: User,
+        text: str | None,
+        url: str | None,
+        upload: UploadFile | None,
+        source_app: str | None,
+    ) -> Capture | None:
+        """Store the raw input and enqueue enrichment. Nothing slow or fallible happens here."""
+        text = (text or "").strip() or None
+        url = (url or "").strip() or first_url(text)
         if upload is not None and not upload.filename:
             upload = None
         if not (text or url or upload):
-            raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "nothing to save")
-
+            return None
         file_path = await _save_upload(upload, settings) if upload else None
         kind = "image" if file_path else "url" if url else "text"
         row = Capture(
@@ -155,14 +171,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raw_text=text,
             url=url,
             file_path=file_path,
-            source_app=data.source_app,
+            source_app=source_app,
         )
         row.user = user
         db.add(row)
         db.flush()
         jobs.enqueue(db, "enrich_capture", {"capture_id": row.id})
         db.commit()
-        return to_out(row)
+        return row
+
+    @app.post("/share-target", include_in_schema=False)
+    async def share_target(
+        request: Request, user: User = Depends(current_user), db: Session = Depends(get_db)
+    ) -> RedirectResponse:
+        """Android share target, for when the service worker isn't installed yet (it normally
+        catches this POST first and queues the share on the phone)."""
+        form = await request.form()
+        parts = [form.get(k) for k in ("title", "text", "url")]
+        text = "\n".join(
+            dict.fromkeys(p.strip() for p in parts if isinstance(p, str) and p.strip())
+        )
+        files = [f for f in form.getlist("media") if isinstance(f, UploadFile) and f.filename]
+        saved = 0
+        for i, f in enumerate(files or [None]):
+            if await store_capture(db, user, text if i == 0 else None, None, f, "share-target"):
+                saved += 1
+        return RedirectResponse(f"/#/capture?shared={saved}", status_code=status.HTTP_303_SEE_OTHER)
 
     @app.get("/api/captures", response_model=list[CaptureOut])
     def list_captures(
