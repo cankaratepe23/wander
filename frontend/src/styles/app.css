@@ -1,0 +1,71 @@
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+@import "./tokens.css";
+
+/* Tailwind utilities that read the Meridian tokens: bg-surface, text-muted, border-line, ... */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-text: var(--text);
+  --color-soft: var(--soft);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-hot: var(--hot);
+  --color-heart: var(--heart);
+  --font-sans: "Geist Variable", system-ui, sans-serif;
+  --font-mono: "Geist Mono Variable", ui-monospace, monospace;
+  --ease-out: var(--ease-out);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.t-display {
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 640;
+  letter-spacing: -0.035em;
+}
+.t-title {
+  font-size: 22px;
+  line-height: 1.15;
+  font-weight: 640;
+  letter-spacing: -0.03em;
+}
+.t-label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 120ms !important;
+    transition-duration: 120ms !important;
+  }
+}

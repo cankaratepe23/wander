@@ -1,0 +1,51 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "api",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "uv",
+        "run",
+        "--directory",
+        "backend",
+        "uvicorn",
+        "--factory",
+        "app.main:create_app",
+        "--port",
+        "8000"
+      ],
+      "env": {
+        "WANDER_DEV_MODE": "true",
+        "WANDER_DATA_DIR": "../.devdata"
+      },
+      "port": 8000
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "dev"
+      ],
+      "port": 5173
+    },
+    {
+      "name": "web-build",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "--prefix",
+        "frontend",
+        "run",
+        "preview",
+        "--",
+        "--port",
+        "4173"
+      ],
+      "port": 4173
+    }
+  ]
+}

@@ -21,10 +21,15 @@ cd backend && WANDER_DEV_MODE=true uv run uvicorn --factory app.main:create_app 
 cd backend && WANDER_DEV_MODE=true uv run python -m app.worker
 cd backend && WANDER_DEV_MODE=true uv run python -m app.seed      # demo ideas for the globe (empty DB only)
 cd frontend && npm run dev          # http://localhost:5173
+cd frontend && npm run build && npm run preview   # http://localhost:4173, the built app (also proxies /api)
 cd backend && uv run pytest -q && uv run ruff check . && uv run ruff format --check .
 ```
 
 (If `uv` isn't on PATH, `python -m uv` works too.)
+
+The globe has been checked on the built app (`npm run preview`). In a hidden or background browser tab, MapLibre's
+frame-driven loading stalls (about 10 s or more), so check map changes in a visible tab. The design system is
+`docs/design/meridian.md`, and its tokens are `frontend/src/styles/tokens.css`.
 
 ## Conventions
 

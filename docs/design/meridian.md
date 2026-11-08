@@ -107,7 +107,7 @@ country level until zoom 5.
 | Land | `#DCDCD6` | `#2D2D33` |
 | Graticule (zoom < 4) | `#EEEEEA` | `#1D1D21` |
 | Boundaries (zoom ≥ 3) | `#C9C9C3`, 0.6 px | `#3A3A41`, 0.6 px |
-| Labels | Geist 11–13, `--muted`, `--bg` halo | same |
+| Labels | Noto Sans 11–12 (OpenFreeMap glyphs), `--muted`, `--bg` halo; countries in caps from zoom 2.5, cities from zoom 5 | same |
 | Sky / atmosphere | off: a flat sphere with a 1 px rim (`#D6D6D0` / `#34343A`) | same |
 
 Region maps (idea card): ocean `#EAF1FB` / `#101826`, land `#FFFFFF` / `#25252A` with a `#D6D6D0` / `#34343A` coast,
@@ -123,7 +123,7 @@ One isometric tile per idea, coloured by its category family, stacked into a pil
   are grouped by category, bottom to top.
 - **Count:** Geist Mono 11/600 beside the top tile when there are 2 or more ideas.
 - **Callouts:** the two biggest visible piles get a hairline leader with the name (Geist 12.5/640) and "N ideas" (mono
-  10.5). Leaders shorten, then flip side, to stay on screen.
+  10.5). A callout flips to the left only when, drawn on the right, it would be cut off.
 - **Clustering:** every idea keeps its own geocoded point. MapLibre clusters by screen distance at each zoom (radius
   about 44 px). A cluster sums its category counts and is named by the lowest admin level its members share (city,
   then region, then country), or "Kyoto +2" across borders.

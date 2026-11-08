@@ -1,33 +1,38 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { api, ApiError, type Capture, type Me } from "./api";
+import { AnimatePresence } from "motion/react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import { api, ApiError, type Capture, type Idea, type MapPoints, type Me } from "./api";
+import { BottomNav, type Tab } from "./components/ui";
+import type { PileData } from "./map/GlobeMap";
+import { CaptureScreen } from "./screens/Capture";
+import { IdeaCard } from "./screens/IdeaCard";
+import { InboxScreen } from "./screens/Inbox";
 
-const STATUS_LABEL: Record<Capture["status"], string> = {
-  queued: "Saved",
-  processing: "Filing…",
-  done: "Filed",
-  needs_review: "Needs a look",
-  failed: "Failed",
-};
+// The map (MapLibre) is most of the bundle; load it only when the Globe tab is opened,
+// so capturing an idea never waits for it.
+const GlobeScreen = lazy(() => import("./screens/Globe").then((m) => ({ default: m.GlobeScreen })));
 
-function timeAgo(iso: string): string {
-  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
-  if (s < 60) return "just now";
-  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
-  return new Date(iso).toLocaleDateString();
+const TABS: Tab[] = ["inbox", "capture", "globe"];
+const EMPTY_MAP: MapPoints = { type: "FeatureCollection", features: [] };
+
+function tabFromHash(): Tab {
+  const t = location.hash.replace("#/", "") as Tab;
+  return TABS.includes(t) ? t : "capture";
 }
 
 export default function App() {
   const [me, setMe] = useState<Me | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [tab, setTab] = useState<Tab>(tabFromHash);
   const [captures, setCaptures] = useState<Capture[]>([]);
-  const [text, setText] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [flash, setFlash] = useState<string | null>(null);
-  const box = useRef<HTMLTextAreaElement>(null);
+  const [ideas, setIdeas] = useState<Idea[]>([]);
+  const [points, setPoints] = useState<MapPoints>(EMPTY_MAP);
+  const [open, setOpen] = useState<Idea | null>(null);
+  const [only, setOnly] = useState<{ label: string; ids: number[] } | null>(null);
 
   const refresh = useCallback(() => {
     api.captures().then(setCaptures).catch(() => {});
+    api.ideas().then(setIdeas).catch(() => {});
+    api.map().then(setPoints).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -37,89 +42,89 @@ export default function App() {
         setMe(m);
         refresh();
       })
-      .catch((e: unknown) =>
-        setAuthError(e instanceof ApiError ? `${e.status}: ${e.message}` : "Can't reach Wander"),
-      );
+      .catch((e: unknown) => setAuthError(e instanceof ApiError ? `${e.status}: ${e.message}` : "Can't reach Wander"));
   }, [refresh]);
 
-  async function save() {
-    const value = text.trim();
-    if (!value || saving) return;
-    setSaving(true);
-    try {
-      const saved = await api.capture(value);
-      setCaptures((prev) => [saved, ...prev]);
-      setText("");
-      setFlash("Saved ✓");
-      setTimeout(() => setFlash(null), 1800);
-      box.current?.focus();
-    } catch (e) {
-      setFlash(e instanceof ApiError ? `Not saved: ${e.message}` : "Not saved: offline?");
-    } finally {
-      setSaving(false);
+  // While anything is still being filed, check the captures every few seconds, and reload the
+  // ideas and the map only when one of them has finished.
+  const filing = captures.filter((c) => c.status === "queued" || c.status === "processing").length;
+  useEffect(() => {
+    if (!filing) return;
+    const t = setInterval(() => {
+      api
+        .captures()
+        .then((next) => {
+          setCaptures(next);
+          if (next.filter((c) => c.status === "queued" || c.status === "processing").length < filing) refresh();
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [filing, refresh]);
+
+  useEffect(() => {
+    const onHash = () => setTab(tabFromHash());
+    addEventListener("hashchange", onHash);
+    return () => removeEventListener("hashchange", onHash);
+  }, []);
+
+  const go = (t: Tab) => {
+    location.hash = `#/${t}`;
+    setTab(t);
+  };
+
+  const heart = async (idea: Idea) => {
+    const next = await api.heart(idea.id);
+    setIdeas((all) => all.map((i) => (i.id === next.id ? next : i)));
+    setOpen((o) => (o?.id === next.id ? next : o));
+    api.map().then(setPoints).catch(() => {});
+  };
+
+  const openPile = (pile: PileData) => {
+    if (pile.ideaIds.length === 1) {
+      const idea = ideas.find((i) => i.id === pile.ideaIds[0]);
+      if (idea) setOpen(idea);
+      return;
     }
-  }
+    setOnly({ label: pile.label, ids: pile.ideaIds });
+    go("inbox");
+  };
 
   if (authError) {
     return (
-      <main className="shell">
-        <h1 className="brand">Wander</h1>
-        <p className="muted">Couldn't sign you in ({authError}).</p>
+      <main className="grid h-full place-items-center p-8 text-center">
+        <div>
+          <h1 className="t-display m-0">Wander</h1>
+          <p className="text-muted">Couldn't sign you in ({authError}).</p>
+        </div>
       </main>
     );
   }
+  if (!me) return <main className="h-full" aria-busy="true" />;
 
   return (
-    <main className="shell">
-      <header className="top">
-        <h1 className="brand">Wander</h1>
-        {me && <span className="muted">hello, {me.display_name}</span>}
-      </header>
-
-      <section className="capture">
-        <textarea
-          ref={box}
-          autoFocus
-          rows={3}
-          placeholder="A place, a link, a half-remembered idea…"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
-          }}
-        />
-        <div className="row">
-          <span className="flash" aria-live="polite">
-            {flash}
-          </span>
-          <button onClick={save} disabled={!text.trim() || saving}>
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </div>
-      </section>
-
-      <section>
-        <h2 className="section-title">Recent</h2>
-        {captures.length === 0 ? (
-          <p className="muted">Nothing yet. Your first idea goes in the box above.</p>
-        ) : (
-          <ul className="list">
-            {captures.map((c) => (
-              <li key={c.id} className="item">
-                <div className="item-text">
-                  {c.raw_text ?? c.url ?? (c.has_file ? "📷 Screenshot" : "")}
-                </div>
-                <div className="item-meta">
-                  <span className={`badge badge-${c.status}`}>{STATUS_LABEL[c.status]}</span>
-                  <span>
-                    {c.created_by} · {timeAgo(c.created_at)}
-                  </span>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+    <main className="relative mx-auto flex h-full max-w-[480px] flex-col overflow-hidden bg-bg">
+      {tab === "capture" && (
+        <CaptureScreen me={me} captures={captures} ideas={ideas} onSaved={(c) => setCaptures((prev) => [c, ...prev])} />
+      )}
+      {tab === "inbox" && (
+        <InboxScreen ideas={ideas} captures={captures} onOpen={setOpen} only={only} onClearOnly={() => setOnly(null)} />
+      )}
+      {tab === "globe" && (
+        <Suspense fallback={<div className="flex-1" aria-busy="true" />}>
+          <GlobeScreen points={points} ideas={ideas} onOpenPile={openPile} />
+        </Suspense>
+      )}
+      <BottomNav
+        tab={tab}
+        onTab={(t) => {
+          if (t !== "inbox") setOnly(null);
+          go(t);
+        }}
+      />
+      <AnimatePresence>
+        {open && <IdeaCard key={open.id} idea={open} onClose={() => setOpen(null)} onHeart={() => heart(open)} />}
+      </AnimatePresence>
     </main>
   );
 }

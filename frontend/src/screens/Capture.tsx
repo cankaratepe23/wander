@@ -1,0 +1,186 @@
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
+import { useRef, useState } from "react";
+import { api, ApiError, type Capture as CaptureRow, type Idea, type Me } from "../api";
+import { Icon } from "../components/ui";
+
+export const STATUS_LABEL: Record<CaptureRow["status"], string> = {
+  queued: "Saved",
+  processing: "Filing…",
+  done: "Filed",
+  needs_review: "Needs a look",
+  failed: "Failed",
+};
+
+export function statusStyle(s: CaptureRow["status"]): { background: string; color: string } {
+  if (s === "done") return { background: "var(--nature-soft)", color: "var(--nature-ink)" };
+  if (s === "needs_review" || s === "failed") return { background: "var(--culture-soft)", color: "var(--culture-ink)" };
+  return { background: "var(--accent-soft)", color: "var(--accent-ink)" };
+}
+
+export function timeAgo(iso: string): string {
+  const s = Math.round((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)} h ago`;
+  return new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+}
+
+function greeting(): string {
+  const h = new Date().getHours();
+  return h < 5 ? "Good night" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+}
+
+export function captureText(c: CaptureRow): string {
+  return c.raw_text ?? c.url ?? (c.has_file ? "Screenshot" : "");
+}
+
+export function CaptureScreen({
+  me,
+  captures,
+  ideas,
+  onSaved,
+}: {
+  me: Me;
+  captures: CaptureRow[];
+  ideas: Idea[];
+  onSaved: (c: CaptureRow) => void;
+}) {
+  const [text, setText] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const box = useRef<HTMLTextAreaElement>(null);
+  const file = useRef<HTMLInputElement>(null);
+  const reduce = useReducedMotion();
+
+  const places = new Set(ideas.flatMap((i) => i.places.map((p) => p.id))).size;
+  const canSave = !saving && (text.trim().length > 0 || image !== null);
+
+  async function save() {
+    if (!canSave) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = image ? await api.captureImage(image, text.trim()) : await api.capture(text.trim());
+      onSaved(saved);
+      setText("");
+      setImage(null);
+      box.current?.focus();
+    } catch (e) {
+      setError(e instanceof ApiError ? `Not saved: ${e.message}` : "Not saved. Are you offline?");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function onPaste(e: React.ClipboardEvent) {
+    const img = [...e.clipboardData.files].find((f) => f.type.startsWith("image/"));
+    if (img) {
+      e.preventDefault();
+      setImage(img);
+    }
+  }
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 pb-6" style={{ paddingTop: "max(28px, env(safe-area-inset-top))" }}>
+      <header className="flex flex-col gap-1 px-1.5 pt-4">
+        <h1 className="t-display m-0">
+          {greeting()}, {me.display_name}
+        </h1>
+        <span className="font-mono text-xs text-muted">
+          {ideas.length} ideas · {places} places
+        </span>
+      </header>
+
+      <section className="mt-5 rounded-[22px] border border-line bg-surface p-4 shadow-[0_8px_28px_var(--shadow)]">
+        <label htmlFor="capture-box" className="t-label text-muted">
+          New idea
+        </label>
+        <textarea
+          id="capture-box"
+          ref={box}
+          autoFocus
+          rows={4}
+          placeholder="A place, a link, a half-remembered idea…"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          onPaste={onPaste}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) save();
+          }}
+          className="mt-2 block w-full resize-none border-0 bg-transparent p-0 text-[17px] leading-[1.45] text-text outline-none placeholder:text-muted"
+        />
+        {image && (
+          <div className="mt-2 flex items-center gap-2 rounded-xl border border-line px-3 py-2 text-[13px]">
+            <Icon name="image" size={16} />
+            <span className="min-w-0 flex-1 truncate">{image.name || "Pasted image"}</span>
+            <button type="button" aria-label="Remove image" onClick={() => setImage(null)} className="text-muted">
+              <Icon name="close" size={16} />
+            </button>
+          </div>
+        )}
+        <div className="mt-3 flex items-center gap-2">
+          <button
+            type="button"
+            aria-label="Add a screenshot"
+            onClick={() => file.current?.click()}
+            className="grid size-10 place-items-center rounded-xl border border-line text-text"
+          >
+            <Icon name="image" size={18} />
+          </button>
+          <input
+            ref={file}
+            type="file"
+            accept="image/*"
+            hidden
+            onChange={(e) => setImage(e.target.files?.[0] ?? null)}
+          />
+          <span className="flex-1 text-[13px]" aria-live="polite" style={{ color: "var(--culture-ink)" }}>
+            {error}
+          </span>
+          <button
+            type="button"
+            onClick={save}
+            disabled={!canSave}
+            className="h-11 rounded-xl bg-accent px-5 text-sm font-semibold text-on-accent transition-opacity duration-150 disabled:opacity-40"
+          >
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </section>
+
+      <section className="mt-6">
+        <h2 className="t-label m-0 px-1.5 text-muted">Recent</h2>
+        {captures.length === 0 ? (
+          <p className="px-1.5 text-sm text-muted">Nothing yet. Your first idea goes in the box above.</p>
+        ) : (
+          <ul className="m-0 mt-2.5 flex list-none flex-col gap-2 p-0">
+            <AnimatePresence initial={false}>
+              {captures.slice(0, 6).map((c) => (
+                <motion.li
+                  key={c.id}
+                  layout={!reduce}
+                  initial={reduce ? { opacity: 0 } : { opacity: 0, y: -36, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0 }}
+                  transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 380, damping: 30 }}
+                  className="rounded-[14px] border border-line bg-surface px-3.5 py-3"
+                >
+                  <div className="line-clamp-2 text-[15px] leading-snug">{captureText(c)}</div>
+                  <div className="mt-2 flex items-center gap-2 text-xs text-muted">
+                    <span className="rounded-full px-2 py-0.5 font-semibold" style={statusStyle(c.status)}>
+                      {STATUS_LABEL[c.status]}
+                    </span>
+                    <span className="font-mono">
+                      {c.created_by} · {timeAgo(c.created_at)}
+                    </span>
+                  </div>
+                </motion.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
