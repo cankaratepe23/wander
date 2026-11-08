@@ -123,6 +123,24 @@ export default function App() {
     api.map().then(setPoints).catch(() => {});
   };
 
+  // The review tray: decide on an imported idea and move straight on to the next one.
+  const toReview = ideas.filter((i) => !i.reviewed && i.status !== "dismissed");
+  const decide = (idea: Idea, keep: boolean) => {
+    const at = toReview.findIndex((i) => i.id === idea.id);
+    const next = toReview[at + 1] ?? toReview[at - 1] ?? null;
+    const patch = keep ? { reviewed: true } : { status: "dismissed" as const, reviewed: true };
+    setIdeas((all) => all.map((i) => (i.id === idea.id ? { ...i, ...patch } : i)));
+    setOpen(next);
+    if (!next) say("That's all of them ✓");
+    api
+      .patchIdea(idea.id, patch)
+      .then(() => api.map().then(setPoints))
+      .catch(() => {
+        say("Couldn't save that one, so it's back in the list.");
+        refresh();
+      });
+  };
+
   const openPile = (pile: PileData) => {
     if (pile.ideaIds.length === 1) {
       const idea = ideas.find((i) => i.id === pile.ideaIds[0]);
@@ -219,6 +237,11 @@ export default function App() {
               setOpen(next);
               api.map().then(setPoints).catch(() => {});
             }}
+            review={
+              !open.reviewed && open.status !== "dismissed"
+                ? { left: toReview.length, onKeep: () => decide(open, true), onDrop: () => decide(open, false) }
+                : undefined
+            }
           />
         )}
         {settingsOpen && <Settings me={me} onClose={() => setSettingsOpen(false)} onReenriched={refresh} />}

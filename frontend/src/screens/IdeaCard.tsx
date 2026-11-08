@@ -52,13 +52,17 @@ export function IdeaCard({
   onClose,
   onHeart,
   onChange,
+  review,
 }: {
   idea: Idea;
   onClose: () => void;
   onHeart: () => void;
   onChange: (next: Idea) => void;
+  /** Set while the idea is in the review tray: the card then offers Keep and Drop. */
+  review?: { left: number; onKeep: () => void; onDrop: () => void };
 }) {
-  const reduce = useReducedMotion();
+  // Going through the tray should feel quick, so those cards fade rather than slide.
+  const reduce = useReducedMotion() || !idea.reviewed;
   const p = idea.places[0];
   const both = idea.hearted_by.length >= 2;
   const [notes, setNotes] = useState(idea.notes ?? "");
@@ -311,6 +315,39 @@ export function IdeaCard({
         </div>
       </div>
 
+      {review ? (
+        <div
+          className="flex shrink-0 flex-col gap-2 border-t border-line px-4 pt-2.5"
+          style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
+        >
+          <span className="text-center font-mono text-xs text-muted">{review.left} left to review</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={review.onDrop}
+              className="h-[50px] flex-1 rounded-2xl border border-line bg-surface text-[15px] font-semibold text-text"
+            >
+              Drop
+            </button>
+            <button
+              type="button"
+              onClick={onHeart}
+              aria-pressed={idea.hearted_by_me}
+              aria-label={idea.hearted_by_me ? "You want this" : "I want this"}
+              className="grid size-[50px] shrink-0 place-items-center rounded-2xl border border-line bg-surface text-text"
+            >
+              <Heart filled={idea.hearted_by_me} size={18} />
+            </button>
+            <button
+              type="button"
+              onClick={review.onKeep}
+              className="h-[50px] flex-1 rounded-2xl bg-accent text-[15px] font-semibold text-on-accent"
+            >
+              Keep
+            </button>
+          </div>
+        </div>
+      ) : (
       <div
         className="flex shrink-0 gap-2 border-t border-line px-4 pt-3"
         style={{ paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}
@@ -335,6 +372,7 @@ export function IdeaCard({
           {idea.hearted_by_me ? "You want this" : "I want this"}
         </button>
       </div>
+      )}
     </motion.div>
   );
 }
