@@ -49,10 +49,13 @@ def download_video(url: str, settings: Settings, workdir: Path) -> Path | None:
     opts = ytdlp_options(settings)
     opts.update(
         {
-            "format": "best[height<=720][ext=mp4]/best[height<=720]/best",
+            # Separate streams merged by ffmpeg where needed; never above 720p (PLAN.md decision 5).
+            "format": "bv*[height<=720]+ba/b[height<=720]/bv*+ba/b",
+            "merge_output_format": "mp4",
             "outtmpl": str(workdir / "video.%(ext)s"),
             "max_filesize": 300 * 1024 * 1024,
             "overwrites": True,
+            "noprogress": True,
         }
     )
     opts.pop("skip_download", None)
@@ -113,11 +116,31 @@ def transcribe(video: Path, settings: Settings) -> str | None:
                 compute_type="int8",
                 download_root=str(settings.data_dir / "models"),
             )
-        segments, _info = _whisper.transcribe(str(video), vad_filter=True, beam_size=1)
+        audio = decode_audio(video)
+        if audio is None:
+            return None
+        segments, _info = _whisper.transcribe(audio, vad_filter=True, beam_size=1)
         return " ".join(seg.text.strip() for seg in segments).strip() or None
     except Exception as exc:  # noqa: BLE001
         log.warning("transcription failed for %s: %s", video, exc)
         return None
+
+
+def decode_audio(video: Path):
+    """16 kHz mono float32 samples via ffmpeg (sidesteps faster-whisper's PyAV decoding)."""
+    if not shutil.which("ffmpeg"):
+        return None
+    import numpy as np
+
+    try:
+        out = subprocess.run(
+            ["ffmpeg", "-loglevel", "error", "-i", str(video), "-vn", "-ac", "1", "-ar", "16000", "-f", "f32le", "-"],
+            capture_output=True, timeout=300, check=True,
+        )  # fmt: skip
+    except subprocess.SubprocessError:
+        return None
+    samples = np.frombuffer(out.stdout, dtype=np.float32)
+    return samples if samples.size else None
 
 
 def prune_videos(settings: Settings) -> list[str]:
