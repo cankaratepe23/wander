@@ -9,19 +9,27 @@ from app.config import get_settings
 from app.geocode import Hit, hit_from
 from app.models import AiUsage, Capture, Idea, Job, Place, User
 from app.sources import Signals
-from app.understand import PlaceGuess, Understanding, build_content, clean
+from app.understand import IdeaDraft, PlaceGuess, Understanding, build_content, clean
 from app.worker import run_one
 
 
 def understanding(**kw) -> Understanding:
+    """One idea by default; keyword arguments set its fields, or the top-level ones."""
+    top = {k: kw.pop(k) for k in ("is_travel_related", "language", "ideas") if k in kw}
+    return Understanding(
+        **{"is_travel_related": True, "language": "en", "ideas": [draft(**kw)], **top}
+    )
+
+
+def draft(**kw) -> IdeaDraft:
     base = dict(
-        is_travel_related=True, title="Lycian Way: Kaş to Kalkan", summary="Cliff paths and coves.",
-        category="hiking", tags=["hiking", "coast"], language="en", confidence=0.9,
+        title="Lycian Way: Kaş to Kalkan", summary="Cliff paths and coves.",
+        category="hiking", tags=["hiking", "coast"], confidence=0.9,
         places=[PlaceGuess(name="Kaş", type="city", country="Türkiye", query="Kaş, Antalya, Türkiye", confidence=0.95)],
         best_months=[9, 10], good_months=[4, 5], budget_level=2, trip_length_hint="2-3 days",
     )  # fmt: skip
     base.update(kw)
-    return Understanding(**base)
+    return IdeaDraft(**base)
 
 
 KAS = Hit("Kaş", 36.2, 29.64, "r123", "Türkiye", "TR", "Antalya", "Kaş")
@@ -203,7 +211,7 @@ def test_clean_clamps_values():
             category="nope",
             title="  x  ",
         )
-    )
+    ).ideas[0]
     assert u.best_months == [9] and u.good_months == [4]
     assert u.budget_level is None and u.category == "other" and u.title == "x"
 

@@ -104,8 +104,9 @@ capture ──► queue ──► [1] resolve source ──► [2] extract media
    type `country|region|city|poi|restaurant|hotel|activity`, country, a geocoder-friendly query string
    such as `"Kaş, Antalya, Türkiye"`, and a confidence), plus `category` (beach, city break, food, hiking,
    nature, culture, festival, road trip, ski, wellness, experience, accommodation…), `tags`,
-   `best_months`, `budget_level`, `trip_length_hint` and `language`. A single post such as "10 hidden gems in
-   Portugal" becomes one idea linked to 10 places. Captions and voice-overs in any language are understood;
+   `best_months`, `budget_level`, `trip_length_hint` and `language`. An idea is one thing to decide on, so a post
+   such as "10 hidden gems in Portugal" becomes 10 ideas, while a route like the Lycian Way is one idea with every
+   stop as a place. Captions and voice-overs in any language are understood;
    summaries are written in English.
 4. **Geocode.** Claude names places but doesn't supply coordinates, because LLM coordinates aren't
    reliable. The query string goes to a real geocoder, public **Nominatim** or **Photon**
@@ -409,4 +410,6 @@ Promote a hotspot to a trip, then itinerary drafting, dates and budget.
    through the normal import pipeline. A generic "groups of links" import and a browser helper were rejected: they'd
    be desktop-only and tied to TikTok's undocumented web API, for something that happens once.
 10. **Carousels are read in full** (2026-11-08), up to a 35-slide safety limit. Choosing among slides needs them read
-    first, so places are removed afterwards rather than capped up front.
+    first, so ideas are dismissed afterwards rather than capped up front.
+11. **An idea is one activity, not one post** (2026-11-08). A list post becomes one idea per thing; a route stays one
+    idea with several places. Each idea can be hearted, shortlisted or dismissed by itself.

@@ -18,7 +18,7 @@ from app import geocode, sources, understand
 from app.config import Settings
 from app.models import Capture, Heart, Idea, IdeaPlace, Media
 from app.sources import Signals
-from app.understand import Understanding
+from app.understand import IdeaDraft, Understanding
 
 log = logging.getLogger("wander.enrich")
 
@@ -98,32 +98,36 @@ def prepare(
     return Prepared(signals, images)
 
 
-def already_filed(db: Session, capture: Capture) -> Idea | None:
-    """An idea already filed from another capture of the same link or the same post, if any."""
+def already_filed(db: Session, capture: Capture) -> list[Idea]:
+    """The ideas already filed from another capture of the same link or the same post."""
     if not capture.url:
-        return None
+        return []
     same = Capture.url == capture.url
     if capture.post_key:
         same = or_(same, Capture.post_key == capture.post_key)
-    return db.scalar(
-        select(Idea)
-        .join(Capture, Idea.capture_id == Capture.id)
-        .where(same, Capture.id != capture.id, Idea.status != "dismissed")
-        .limit(1)
+    return list(
+        db.scalars(
+            select(Idea)
+            .join(Capture, Idea.capture_id == Capture.id)
+            .where(same, Capture.id != capture.id, Idea.status != "dismissed")
+            .order_by(Idea.id)
+        )
     )
 
 
 def heart_if_filed(db: Session, capture: Capture) -> Idea | None:
-    """Saved twice (often once by each person): count it as interest in the existing idea, not a duplicate."""
+    """Saved twice (often once by each person): count it as interest in the existing ideas, not a duplicate."""
     same = already_filed(db, capture)
-    if same is None:
+    if not same:
         return None
-    if db.get(Heart, (same.id, capture.user_id)) is None:
-        db.add(Heart(idea_id=same.id, user_id=capture.user_id))
+    for idea in same:
+        if db.get(Heart, (idea.id, capture.user_id)) is None:
+            db.add(Heart(idea_id=idea.id, user_id=capture.user_id))
+    more = f" and {len(same) - 1} more" if len(same) > 1 else ""
     capture.status = "done"
-    capture.error = f"Already saved as “{same.title}”, so it was hearted for you instead."
+    capture.error = f"Already saved as “{same[0].title}”{more}, so it was hearted for you instead."
     db.commit()
-    return same
+    return same[0]
 
 
 def images_for(capture: Capture, settings: Settings, signals: Signals) -> list[Path]:
@@ -168,9 +172,12 @@ def apply(
     *,
     imported: bool = False,
 ) -> Idea | None:
-    """Steps 4-5: geocode, dedupe and file the idea; decide whether it needs a look."""
+    """Steps 4-5: geocode, dedupe and file the capture's ideas, and decide whether it needs a look.
+
+    Returns the first idea. A capture filed again updates its ideas in place, in order.
+    """
     deps = deps or Deps()
-    if not u.is_travel_related:
+    if not u.is_travel_related or not u.ideas:
         if imported:
             # Most of a chat export isn't travel; drop those quietly (the raw input is kept).
             capture.status = "dismissed"
@@ -181,32 +188,60 @@ def apply(
             db, capture, "This doesn't look like a travel idea. Keep it, edit it, or dismiss it."
         )
 
+    existing = list(db.scalars(select(Idea).where(Idea.capture_id == capture.id).order_by(Idea.id)))
+    # Another copy may have been filed while this one waited, as happens within a batch.
+    if not existing and (same := heart_if_filed(db, capture)):
+        return same
+
     notes = list(notes)
-    idea = db.scalar(
-        select(Idea).where(Idea.capture_id == capture.id)
-    )  # re-enrich updates in place
-    if idea is None:
-        # Another copy may have been filed while this one waited, as happens within a batch.
-        if same := heart_if_filed(db, capture):
-            return same
-        idea = Idea(capture_id=capture.id, created_by=capture.user_id, reviewed=not imported)
-        db.add(idea)
-    idea.title = u.title
-    idea.summary = u.summary
-    idea.category = u.category
-    idea.tags = u.tags
-    idea.best_months = u.best_months
-    idea.good_months = u.good_months
-    idea.budget_level = u.budget_level
-    idea.trip_length_hint = u.trip_length_hint
+    filed: list[Idea] = []
+    needs_look = False
+    for n, draft in enumerate(u.ideas):
+        if n < len(existing):
+            idea = existing[n]
+        else:
+            idea = Idea(capture_id=capture.id, created_by=capture.user_id, reviewed=not imported)
+            db.add(idea)
+        label = f"“{draft.title}”: " if len(u.ideas) > 1 else ""
+        needs_look |= file_idea(db, idea, draft, settings, deps, notes, label)
+        filed.append(idea)
+    for stale in existing[len(u.ideas) :]:  # a re-read found fewer; keep any someone has acted on
+        if stale.status == "someday" and not stale.hearts and not stale.notes:
+            db.delete(stale)
+
+    capture.status = "needs_review" if needs_look else "done"
+    capture.error = " ".join(dict.fromkeys(notes)) or None
+    db.commit()
+    log.info("capture %s → %d ideas (%s)", capture.id, len(filed), capture.status)
+    return filed[0]
+
+
+def file_idea(
+    db: Session,
+    idea: Idea,
+    draft: IdeaDraft,
+    settings: Settings,
+    deps: Deps,
+    notes: list[str],
+    label: str,
+) -> bool:
+    """Fill one idea from Claude's draft and place it on the map. True if it needs a look."""
+    idea.title = draft.title
+    idea.summary = draft.summary
+    idea.category = draft.category
+    idea.tags = draft.tags
+    idea.best_months = draft.best_months
+    idea.good_months = draft.good_months
+    idea.budget_level = draft.budget_level
+    idea.trip_length_hint = draft.trip_length_hint
     idea.ai_model = settings.enrich_model
-    idea.ai_confidence = u.confidence
+    idea.ai_confidence = draft.confidence
     idea.links.clear()
     db.flush()
 
     seen: set[int] = set()
     place_problems = False
-    for i, guess in enumerate(u.places):
+    for i, guess in enumerate(draft.places):
         if guess.confidence < PLACE_CONFIDENCE:
             notes.append(f"Not sure about “{guess.name}”, so it wasn't placed.")
             place_problems = True
@@ -224,21 +259,13 @@ def apply(
         seen.add(place.id)
         idea.links.append(IdeaPlace(place=place, role="primary" if i == 0 else "mentioned"))
 
-    if not idea.links and u.places:
-        notes.append("No place could be put on the map.")
-    elif not u.places:
-        notes.append("No place was named, so it isn't on the map yet.")
-    if u.confidence < IDEA_CONFIDENCE:
-        notes.append("Claude wasn't confident about this one.")
-
-    needs_look = not idea.links or u.confidence < IDEA_CONFIDENCE or place_problems
-    capture.status = "needs_review" if needs_look else "done"
-    capture.error = " ".join(dict.fromkeys(notes)) or None
-    db.commit()
-    log.info(
-        "capture %s → idea %s (%s, %d places)", capture.id, idea.id, capture.status, len(idea.links)
-    )
-    return idea
+    if not idea.links and draft.places:
+        notes.append(f"{label}No place could be put on the map.")
+    elif not draft.places:
+        notes.append(f"{label}No place was named, so it isn't on the map yet.")
+    if draft.confidence < IDEA_CONFIDENCE:
+        notes.append(f"{label}Claude wasn't confident about this one.")
+    return not idea.links or draft.confidence < IDEA_CONFIDENCE or place_problems
 
 
 def park(db: Session, capture: Capture, note: str) -> None:

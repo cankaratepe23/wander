@@ -227,12 +227,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 .limit(max(1, min(limit, 200)))
             )
         )
-        titles = dict(
-            db.execute(
-                select(Idea.capture_id, Idea.title).where(Idea.capture_id.in_([c.id for c in rows]))
-            ).all()
-        )
-        return [to_out(c, titles.get(c.id)) for c in rows]
+        filed: dict[int, list[str]] = {}
+        for capture_id, title in db.execute(
+            select(Idea.capture_id, Idea.title)
+            .where(Idea.capture_id.in_([c.id for c in rows]))
+            .order_by(Idea.id)
+        ):
+            filed.setdefault(capture_id, []).append(title)
+
+        def title_of(c: Capture) -> str | None:
+            titles = filed.get(c.id)
+            if not titles:
+                return None
+            return titles[0] if len(titles) == 1 else f"{titles[0]} and {len(titles) - 1} more"
+
+        return [to_out(c, title_of(c)) for c in rows]
 
     app.include_router(ideas_api.router)
     app.include_router(chat_api.router)

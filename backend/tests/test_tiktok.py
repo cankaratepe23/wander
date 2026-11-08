@@ -4,10 +4,11 @@ from types import SimpleNamespace
 import pytest
 
 from app import backfill, deep, enrich, sources
+from app.geocode import Hit
 from app.models import Capture, Heart, Idea, User
 from app.sources import Signals
-from app.understand import build_content
-from tests.test_enrich import fake_deps, understanding
+from app.understand import IdeaDraft, PlaceGuess, build_content
+from tests.test_enrich import draft, fake_deps, understanding
 from tests.test_phase4 import FakeBatches
 
 EXPORT_LINK = "https://www.tiktokv.com/share/video/7400000000000000000/"
@@ -89,6 +90,70 @@ def test_re_enriching_keeps_a_capture_on_its_own_idea(db, settings):
     idea = enrich.run(db, capture, settings, deps)
     again = enrich.apply(db, capture, settings, understanding(title="New title"), [], deps)
     assert again.id == idea.id and again.title == "New title"
+
+
+def spot(name: str) -> IdeaDraft:
+    return draft(
+        title=name,
+        places=[
+            PlaceGuess(
+                name=name, type="poi", country="Japan", query=f"{name}, Tokyo", confidence=0.9
+            )
+        ],
+    )
+
+
+def test_a_list_post_becomes_one_idea_per_thing(db, settings, client):
+    deps, _ = fake_deps(understanding())
+    capture = add_capture(db, BROWSER_LINK)
+    u = understanding(ideas=[spot("Sumo stable"), spot("Toyosu Market"), spot("Imperial Palace")])
+    first = enrich.apply(db, capture, settings, u, [], deps, imported=True)
+
+    ideas = db.query(Idea).filter_by(capture_id=capture.id).order_by(Idea.id).all()
+    assert [i.title for i in ideas] == ["Sumo stable", "Toyosu Market", "Imperial Palace"]
+    assert first is ideas[0] and all(not i.reviewed and len(i.links) == 1 for i in ideas)
+    title = next(c for c in client.get("/api/captures").json() if c["id"] == capture.id)
+    assert title["title"] == "Sumo stable and 2 more"
+
+
+def test_a_route_stays_one_idea_with_every_stop(db, settings):
+    stops = [
+        PlaceGuess(name=n, type="city", country="T", query=n, confidence=0.9)
+        for n in ("A", "B", "C")
+    ]
+    hits = {n: Hit(n, 1.0, float(i), f"r{i}", "T", "TR", "R", n) for i, n in enumerate("ABC")}
+    deps, _ = fake_deps(understanding(), hits=hits)
+    capture = add_capture(db, BROWSER_LINK)
+    idea = enrich.apply(db, capture, settings, understanding(title="Route", places=stops), [], deps)
+    assert db.query(Idea).count() == 1 and len(idea.links) == 3
+    assert [link.role for link in idea.links] == ["primary", "mentioned", "mentioned"]
+
+
+def test_a_second_save_of_a_list_post_hearts_every_idea(db, settings):
+    deps, _ = fake_deps(understanding())
+    first = add_capture(db, BROWSER_LINK)
+    first.post_key = KEY
+    enrich.apply(db, first, settings, understanding(ideas=[spot("A"), spot("B")]), [], deps)
+    second = add_capture(db, EXPORT_LINK)
+    assert enrich.run(db, second, settings, deps) is None and second.status == "done"
+    assert db.query(Heart).count() == 2 and db.query(Idea).count() == 2
+    assert "and 1 more" in second.error
+
+
+def test_reading_again_updates_in_place_and_keeps_what_someone_acted_on(db, settings):
+    deps, _ = fake_deps(understanding())
+    capture = add_capture(db, BROWSER_LINK)
+    enrich.apply(
+        db, capture, settings, understanding(ideas=[spot("A"), spot("B"), spot("C")]), [], deps
+    )
+    a, b, c = db.query(Idea).order_by(Idea.id).all()
+    c.status = "shortlist"
+    b_id = b.id
+    db.commit()
+
+    enrich.apply(db, capture, settings, understanding(ideas=[spot("A2")]), [], deps)
+    assert a.title == "A2"
+    assert db.get(Idea, b_id) is None and db.get(Idea, c.id).status == "shortlist"
 
 
 def test_carousel_gets_its_slides_location_tag_and_stickers(monkeypatch, settings, tmp_path):
