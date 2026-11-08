@@ -1,6 +1,6 @@
 # Wander: design & implementation plan
 
-*Status (2026-11-08): Phase 0 deployed; Phase 1a done (Meridian). Phase 1 built: enrichment pipeline, Android share target with an offline outbox, iOS Shortcut path (`docs/ios-shortcut.md`), editing and Needs a look. It needs an API key and a deploy to meet its done-when.*
+*Status (2026-11-08): Phases 0-4 are built and tested (68 backend tests). Phase 0 is deployed. The rest is waiting on configuration (an API key, the Access pieces for the iOS Shortcut and MCP, Instagram cookies, an ntfy topic) and a deploy; then each phase's done-when gets checked against real posts. Phase 5 (trips) comes once v1 has been lived with.*
 
 ## 1. The problem
 
@@ -232,18 +232,20 @@ until v1 has been lived with for a while.
 ```
 users(id, email, display_name)                      -- keyed by the Access login email
 captures(id, user_id, kind[text|url|image|voice|import], raw_text, url,
-         file_path, source_app, status[queued|processing|done|needs_review|failed],
-         error, created_at)
-media(id, capture_id, platform, author, caption, transcript, location_tag,
-      thumbnail_path, keyframe_paths[], video_path, fetched_at)
+         file_path, source_app, status[queued|processing|done|needs_review|failed|dismissed],
+         error, import_id, prepared_at, batch_id, created_at)
+media(id, capture_id, platform, author, title, caption, transcript, location_tag,
+      thumbnail_path, keyframe_paths[], video_path, video_bytes, notes[], fetched_at)
 ideas(id, capture_id, title, summary, category, tags[], best_months[], good_months[],
       budget_level, trip_length_hint, status[someday|shortlist|planned|done|dismissed],
-      notes, created_by, created_at, ai_model, ai_confidence)
+      notes, reviewed, created_by, created_at, ai_model, ai_confidence)
 places(id, name, type, lat, lng, country_code, country, region, city, osm_id, geocoder, created_at)
 idea_places(idea_id, place_id, role[primary|mentioned])
 hearts(idea_id, user_id)
-conversations(id, scope[idea|place|region|global], scope_id, created_by)
-messages(id, conversation_id, role, content_json, created_at)
+conversations(id, scope[idea|place|region|global], scope_id, title, created_by)
+messages(id, conversation_id, role, content_json, user_id, created_at)   -- API content blocks, as returned
+imports(id, source[whatsapp|tiktok|instagram], filename, total, created_by)
+ai_usage(id, task[enrich|chat|import], model, token counts, web_searches, cost_usd, batch, created_at)
 jobs(id, kind, payload_json, status, attempts, run_after, last_error)
 -- later: trips(id, name, region, start, end), trip_items(...)
 ```
@@ -260,7 +262,7 @@ Wander is designed to self-host on a small, always-on Docker box (a low-power mi
 - **Configuration** is `WANDER_*` environment variables (see `backend/app/config.py`). The secret ones (the
   Anthropic key, Instagram cookies) belong in an encrypted store on the host side, never in this repo.
 - **Backups.** The app writes a nightly `sqlite3 .backup` copy beside the live DB, so a filesystem snapshot
-  always holds a consistent file. Archived videos are capped (`VIDEO_ARCHIVE_MAX_GB`, default 5).
+  always holds a consistent file. Archived videos are capped (`WANDER_VIDEO_ARCHIVE_MAX_GB`, default 5).
 - **No ports are published.** A Cloudflare Tunnel connector reaches the API over a private Docker network.
 
 ### 5.4 Access: public behind Cloudflare Access
@@ -333,7 +335,7 @@ Each phase ends with something both users use, and nothing after Phase 1 blocks 
 - Research visual directions, the UI stack and Claude design skills, then write a design-system doc.
 - **Done when:** one direction, its tokens and mockups of the capture, map and idea-card screens are approved.
 
-### Phase 1 — Never lose an idea (MVP)
+### Phase 1 — Never lose an idea (MVP) — built 2026-11-08
 - Quick box (text / link / image), with `POST /api/capture` returning in under 300 ms.
 - PWA manifest, service worker, offline capture queue, **Android share target**.
 - **iOS Shortcut** plus the Access service-token policy on `/api/capture`, with a short setup guide.
@@ -341,11 +343,14 @@ Each phase ends with something both users use, and nothing after Phase 1 blocks 
   for web pages) + screenshot vision → Claude structured output → Nominatim geocoding → dedupe.
   Instagram links that can't be read without cookies go to *Needs a look* until Phase 2.
 - List view, idea card, edit, *Needs a look* tray, hearts, statuses.
-- Map view: clustered pins with category colours (globe projection comes in Phase 3).
+- Map view: clustered pins with category colours (built straight on the globe, with piles).
+- *Built:* the pipeline in `app/sources.py`, `understand.py`, `geocode.py`, `enrich.py`; the PWA share target
+  with an offline outbox (`public/sw.js`, `src/queue.ts`); the Shortcut path (`docs/ios-shortcut.md`); voice
+  capture through the browser's speech-to-text. Still to do with real data: the done-when below.
 - **Done when:** at least 10 real posts from TikTok, Instagram and WhatsApp have been shared in, and
   every one is either filed on the map or waiting in *Needs a look*.
 
-### Phase 2 — Deep parsing
+### Phase 2 — Deep parsing — built 2026-11-08
 - `yt-dlp` metadata and media download (TikTok, Instagram with the throwaway account's cookies, YouTube Shorts).
   Before writing the Instagram path, check `instaloader` as a fallback. It is Instagram-specific and
   exposes a post's **location tag with coordinates**, which `yt-dlp` doesn't always surface. Use it for
@@ -355,17 +360,26 @@ Each phase ends with something both users use, and nothing after Phase 1 blocks 
   `yt-dlp -f "best[height<=720]"`) under a total size cap that deletes the oldest videos first.
 - *Re-enrich* button and "re-enrich all".
 - **Done when:** a voice-over-only TikTok, with no place in the caption, gets the right place.
+- *Built:* `app/deep.py` (720p archive under the cap, ffmpeg keyframes, faster-whisper on ffmpeg-decoded
+  audio, tried on a real video), instaloader for Instagram location tags (still maintained, checked
+  2026-11-08), and re-enrich for one capture or all.
 
-### Phase 3 — Hotspots & chat
+### Phase 3 — Hotspots & chat — built 2026-11-08
 - Region/city aggregation, heat score, Hotspots panel, heatmap layer, globe view.
 - In-app chat (per idea or destination) with tools and web search, streamed, with usage logging.
 - **MCP server** (`/mcp`, streamable HTTP, same tool set) behind `wander-mcp.comaristan.com`.
 - **Done when:** "what do we have around the Aegean coast?" works both in the app and in the Claude app.
+- *Built:* `app/hotspots.py`, `app/tools.py` (one validated tool set), `app/chat.py` (streamed, eager tool
+  inputs validated, web search, exact replay), `app/mcp_server.py` (MCP SDK 2.x, stateless HTTP at `/mcp`,
+  behind the same Access check). The heat layer is stepped bands, not a glow. Setup: `docs/mcp.md`.
 
-### Phase 4 — Backfill & nudges
+### Phase 4 — Backfill & nudges — built 2026-11-08
 - Importers for the WhatsApp `.txt`, the TikTok data JSON and the Instagram data JSON → Batch API → review tray.
 - Monthly seasonal nudge via ntfy.
 - **Done when:** an old chat history's travel links are all on the map.
+- *Built:* `app/importers.py`, `app/backfill.py` (paced reading, Message Batches, results into a review tray
+  that stays off the map until kept), `app/nudges.py` (the 1st of the month, 09:07 local), and a nightly
+  SQLite backup (`app/backup.py`).
 
 ### Phase 5 — Trips (later, separate plan)
 Promote a hotspot to a trip, then itinerary drafting, dates and budget.
@@ -376,7 +390,7 @@ Promote a hotspot to a trip, then itinerary drafting, dates and budget.
 2. **UI language: English only.** Captions and transcripts in any language are still read; summaries come out in English.
 3. **Public behind Cloudflare Access** (§5.4), reached through a shared tunnel connector.
 4. **Instagram: a dedicated throwaway account** supplies the cookies for `yt-dlp`.
-5. **Video archiving: keep originals, capped** (`VIDEO_ARCHIVE_MAX_GB`, default 5, oldest first; ≤ 720p).
+5. **Video archiving: keep originals, capped** (`WANDER_VIDEO_ARCHIVE_MAX_GB`, default 5, oldest first; ≤ 720p).
    Thumbnails, keyframes, caption and transcript are always kept.
 6. **The repository is public** (a portfolio project). It holds no secrets and no deployment-specific
    internals; those live in the operator's private ops repo.

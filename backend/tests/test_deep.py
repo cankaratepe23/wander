@@ -23,3 +23,24 @@ def test_long_videos_skip_deep_parsing(tmp_path):
     s = Signals(platform="youtube", url="https://youtu.be/x", duration_s=deep.MAX_VIDEO_SECONDS + 1)
     deep.deepen(s, Settings(data_dir=tmp_path), tmp_path)
     assert s.video_path is None and "long" in s.notes[0]
+
+
+def test_backup_keeps_a_consistent_copy_and_rotates(tmp_path):
+    import sqlite3
+    from datetime import UTC, datetime, timedelta
+
+    from app import backup
+
+    settings = Settings(data_dir=tmp_path)
+    con = sqlite3.connect(settings.db_path)
+    con.execute("create table t(x)")
+    con.execute("insert into t values (42)")
+    con.commit()
+    start = datetime(2026, 11, 1, tzinfo=UTC)
+    for day in range(9):
+        path = backup.backup(settings, start + timedelta(days=day))
+    con.close()
+    assert sqlite3.connect(path).execute("select x from t").fetchone() == (42,)
+    assert len(list((tmp_path / "backups").glob("wander-*.db"))) == backup.KEEP
+    nxt = backup.next_run(datetime(2026, 11, 8, 2, 0, tzinfo=UTC), "UTC")
+    assert (nxt.day, nxt.hour, nxt.minute) == (8, 3, 17)

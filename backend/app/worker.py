@@ -15,7 +15,7 @@ from typing import Any
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import ai, backfill, deep, enrich, jobs, nudges
+from app import ai, backfill, backup, deep, enrich, jobs, nudges
 from app.config import get_settings
 from app.db import make_engine, make_sessionmaker
 from app.models import Capture, utcnow
@@ -106,6 +106,16 @@ def monthly_nudge(db: Session, payload: dict[str, Any]) -> None:
     db.commit()
 
 
+@handler("nightly_backup")
+def nightly_backup(db: Session, payload: dict[str, Any]) -> None:
+    settings = get_settings()
+    now = utcnow()
+    backup.backup(settings, now)
+    job = jobs.enqueue(db, "nightly_backup", {}, max_attempts=3)
+    job.run_after = backup.next_run(now + timedelta(hours=1), settings.tz)
+    db.commit()
+
+
 def run_one(factory: sessionmaker[Session]) -> bool:
     """Claim and run a single job. Returns True if a job was run."""
     with factory() as db:
@@ -154,6 +164,7 @@ def main() -> None:
     try:
         with factory() as db:
             nudges.ensure_scheduled(db, settings, utcnow(), settings.tz)
+            backup.ensure_scheduled(db, utcnow(), settings.tz)
     except OperationalError:
         pass  # the API hasn't migrated yet; the next start will schedule it
     last_stale_check = 0.0

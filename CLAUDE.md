@@ -9,6 +9,10 @@ Read it before starting any phase. When a decision changes, update `PLAN.md` in 
 - `backend/` — Python 3.13, FastAPI, SQLAlchemy 2, Alembic, SQLite (WAL). Managed with `uv`.
   - `app/main.py` API (`uvicorn --factory app.main:create_app`), `app/worker.py` background worker
     (`python -m app.worker`), `app/jobs.py` the SQLite job queue, `app/auth.py` Cloudflare Access JWT.
+  - Enrichment: `sources.py` (signals) → `understand.py` (Claude) → `geocode.py` → `enrich.py` (the pipeline);
+    `deep.py` video, keyframes and transcripts; `ai.py` the client, prices and usage logging.
+  - Routers `ideas_api.py`, `chat_api.py`, `imports_api.py`; `tools.py` is the tool set shared by `chat.py` and
+    `mcp_server.py`; `hotspots.py`; `importers.py` + `backfill.py` (Batch API); `nudges.py`; `backup.py`.
   - Migrations: `uv run alembic revision --autogenerate -m "..."` (from `backend/`); the API applies them at startup.
 - `frontend/` — Vite + React + TypeScript PWA. In dev, Vite proxies `/api` to `:8000`.
 - `Dockerfile` — one image for both roles; `.github/workflows/image.yml` tests and pushes

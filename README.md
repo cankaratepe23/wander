@@ -4,8 +4,9 @@
 sentence in a few seconds. Wander quietly works out *where* it is, files it on a shared world map, and
 shows you where ideas are piling up, which is usually where your next trip should be.
 
-> Status: early. Phase 0 (the plumbing) is done; capture, AI enrichment and the map are next.
-> The full research, design and roadmap is in [`PLAN.md`](PLAN.md).
+> Status: v1 is built (capture, enrichment, deep parsing, the globe with piles, chat, MCP, backfill) and is
+> being configured for its first real use. The research, design and roadmap are in [`PLAN.md`](PLAN.md), and the
+> design system is [`docs/design/meridian.md`](docs/design/meridian.md).
 
 ## Why
 
@@ -35,6 +36,24 @@ as the core loop, with AI doing the filing afterwards (see the survey in [`PLAN.
   Shortcut posts to the same endpoint.
 - **Refine by chatting.** Chat with Claude in the app, or through an MCP connector in the Claude app, about
   your own idea pool ("what do we have around the Aegean coast?").
+
+## Configuration
+
+Everything is a `WANDER_*` environment variable (`backend/app/config.py`). The ones that matter:
+
+| Variable | What it does |
+|---|---|
+| `WANDER_ACCESS_TEAM_DOMAIN`, `WANDER_ACCESS_AUD` | Cloudflare Access. `AUD` takes several, comma-separated (the app and the MCP hostname) |
+| `WANDER_ALLOWED_EMAILS` | Comma-separated people allowed in (checked again after Access) |
+| `WANDER_ANTHROPIC_API_KEY` | Claude. Without it, captures wait in the queue |
+| `WANDER_ENRICH_MODEL`, `WANDER_CHAT_MODEL` | Both default to `claude-opus-5-5` |
+| `WANDER_SERVICE_TOKENS` | `<client id>=<email>` pairs: Access service tokens (the iOS Shortcut) that may save captures |
+| `WANDER_YTDLP_COOKIES_FILE` | A cookies.txt from a throwaway Instagram account |
+| `WANDER_NTFY_URL` | ntfy topic URL for the monthly seasonal nudge |
+| `WANDER_VIDEO_ARCHIVE_MAX_GB`, `WANDER_WHISPER_MODEL`, `WANDER_DEEP_PARSE` | Deep parsing knobs (5, `small`, on) |
+| `TZ` | Local time for the nudge (the 1st, 09:07) and the nightly backup (03:17) |
+
+Setup guides: [iPhone Shortcut](docs/ios-shortcut.md) · [MCP connector for the Claude app](docs/mcp.md).
 
 ## Stack
 
