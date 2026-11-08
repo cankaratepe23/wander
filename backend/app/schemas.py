@@ -74,6 +74,7 @@ class IdeaOut(BaseModel):
     source_platform: str | None = None
     thumbnail: str | None = None
     has_video: bool = False
+    reviewed: bool = True
 
     @field_serializer("created_at")
     def _utc(self, value: datetime) -> str:

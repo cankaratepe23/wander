@@ -154,26 +154,36 @@ def build_content(
     return content
 
 
+def params(
+    settings: Settings, raw_text: str | None, signals: Signals, images: list[Path]
+) -> dict[str, Any]:
+    """The Messages API request for one capture (also used, unchanged, inside a batch)."""
+    return {
+        "model": settings.enrich_model,
+        "max_tokens": 8000,
+        "system": [{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+        "messages": [{"role": "user", "content": build_content(raw_text, signals, images)}],
+        "output_config": {
+            "effort": settings.enrich_effort,
+            "format": {"type": "json_schema", "schema": SCHEMA},
+        },
+    }
+
+
+def parse(message: Any) -> Understanding:
+    if message.stop_reason == "refusal":
+        raise ValueError("Claude declined to read this capture")
+    text = next((b.text for b in message.content if b.type == "text"), "")
+    return clean(Understanding.model_validate_json(text))
+
+
 def understand(
     db, settings: Settings, raw_text: str | None, signals: Signals, images: list[Path]
 ) -> Understanding:
     """Call Claude and return the validated understanding. Logs usage on the session (caller commits)."""
-    client = ai.client(settings)
-    response = client.messages.create(
-        model=settings.enrich_model,
-        max_tokens=8000,
-        system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        messages=[{"role": "user", "content": build_content(raw_text, signals, images)}],
-        output_config={
-            "effort": settings.enrich_effort,
-            "format": {"type": "json_schema", "schema": SCHEMA},
-        },
-    )
+    response = ai.client(settings).messages.create(**params(settings, raw_text, signals, images))
     ai.log_usage(db, "enrich", settings.enrich_model, response.usage)
-    if response.stop_reason == "refusal":
-        raise ValueError("Claude declined to read this capture")
-    text = next((b.text for b in response.content if b.type == "text"), "")
-    return clean(Understanding.model_validate_json(text))
+    return parse(response)
 
 
 def clean(u: Understanding) -> Understanding:

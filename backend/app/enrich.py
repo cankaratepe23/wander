@@ -45,7 +45,27 @@ def rel(settings: Settings, path: Path | None) -> str | None:
     return path.relative_to(settings.data_dir).as_posix() if path else None
 
 
+@dataclass
+class Prepared:
+    signals: Signals
+    images: list[Path]
+
+
 def run(db: Session, capture: Capture, settings: Settings, deps: Deps | None = None) -> Idea | None:
+    """The whole pipeline for one capture: read the source, ask Claude, file the idea."""
+    deps = deps or Deps()
+    prepared = prepare(db, capture, settings, deps)
+    if prepared is None:
+        return None
+    u = deps.understand(db, settings, capture.raw_text, prepared.signals, prepared.images)
+    db.commit()  # keep the usage row even if a later step fails
+    return apply(db, capture, settings, u, prepared.signals.notes, deps)
+
+
+def prepare(
+    db: Session, capture: Capture, settings: Settings, deps: Deps | None = None
+) -> Prepared | None:
+    """Steps 1-2: gather signals (and deep-parse videos). Returns None if the capture was parked."""
     deps = deps or Deps()
     capture.status = "processing"
     capture.error = None
@@ -62,32 +82,74 @@ def run(db: Session, capture: Capture, settings: Settings, deps: Deps | None = N
             log.exception("deep parsing failed for capture %s", capture.id)
     save_media(db, capture, signals, settings)
 
+    images = images_for(capture, settings, signals)
+    if not (capture.raw_text or signals.as_prompt().keys() - {"platform", "url"} or images):
+        park(db, capture, "Couldn't read anything from this link. " + " ".join(signals.notes))
+        return None
+    return Prepared(signals, images)
+
+
+def images_for(capture: Capture, settings: Settings, signals: Signals) -> list[Path]:
     images: list[Path] = []
     if capture.file_path:
         images.append(settings.data_dir / capture.file_path)
     if signals.thumbnail_path:
         images.append(signals.thumbnail_path)
     images.extend(signals.keyframe_paths)
+    return images
 
-    if not (capture.raw_text or signals.as_prompt().keys() - {"platform", "url"} or images):
-        return park(
-            db, capture, "Couldn't read anything from this link. " + " ".join(signals.notes)
-        )
 
-    u = deps.understand(db, settings, capture.raw_text, signals, images)
-    db.commit()  # keep the usage row even if a later step fails
+def signals_from_media(capture: Capture, media: Media | None, settings: Settings) -> Signals:
+    """Rebuild a capture's signals from what prepare() stored (used when a batch result arrives)."""
+    if media is None:
+        return Signals()
 
+    def path(p: str | None) -> Path | None:
+        return settings.data_dir / p if p else None
+
+    return Signals(
+        platform=media.platform or "text",
+        url=capture.url,
+        title=media.title,
+        caption=media.caption,
+        author=media.author,
+        location_tag=media.location_tag,
+        transcript=media.transcript,
+        thumbnail_path=path(media.thumbnail_path),
+        keyframe_paths=[p for p in (path(k) for k in media.keyframe_paths or []) if p],
+        notes=list(media.notes or []),
+    )
+
+
+def apply(
+    db: Session,
+    capture: Capture,
+    settings: Settings,
+    u: Understanding,
+    notes: list[str],
+    deps: Deps | None = None,
+    *,
+    imported: bool = False,
+) -> Idea | None:
+    """Steps 4-5: geocode, dedupe and file the idea; decide whether it needs a look."""
+    deps = deps or Deps()
     if not u.is_travel_related:
+        if imported:
+            # Most of a chat export isn't travel; drop those quietly (the raw input is kept).
+            capture.status = "dismissed"
+            capture.error = "Not travel-related (from an import)."
+            db.commit()
+            return None
         return park(
             db, capture, "This doesn't look like a travel idea. Keep it, edit it, or dismiss it."
         )
 
-    notes = list(signals.notes)
+    notes = list(notes)
     idea = db.scalar(
         select(Idea).where(Idea.capture_id == capture.id)
     )  # re-enrich updates in place
     if idea is None:
-        idea = Idea(capture_id=capture.id, created_by=capture.user_id)
+        idea = Idea(capture_id=capture.id, created_by=capture.user_id, reviewed=not imported)
         db.add(idea)
     idea.title = u.title
     idea.summary = u.summary

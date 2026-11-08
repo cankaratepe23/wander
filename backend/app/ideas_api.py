@@ -74,6 +74,7 @@ def idea_out(db: Session, idea: Idea, me: User, names: dict[int, str]) -> IdeaOu
         source_platform=media.platform if media else None,
         thumbnail=f"/api/media/{idea.capture_id}/thumb" if media and media.thumbnail_path else None,
         has_video=bool(media and media.video_path),
+        reviewed=idea.reviewed,
     )
 
 
@@ -110,6 +111,7 @@ class IdeaPatch(BaseModel):
     good_months: list[int] | None = None
     budget_level: int | None = None
     trip_length_hint: str | None = None
+    reviewed: bool | None = None
 
 
 def apply_patch(idea: Idea, patch: IdeaPatch) -> None:
@@ -210,7 +212,7 @@ def map_points(_user: User = Depends(current_user), db: Session = Depends(get_db
     """One GeoJSON point per (idea, place). The client clusters them into piles per zoom."""
     features = []
     for idea in load_ideas(db, 2000):
-        if idea.status == "dismissed":
+        if idea.status == "dismissed" or not idea.reviewed:
             continue
         both = len(idea.hearts) >= 2
         for link in idea.links:

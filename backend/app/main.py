@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile  # what request.form() returns
 from starlette.routing import Route
 
-from app import chat_api, ideas_api, jobs, mcp_server
+from app import chat_api, ideas_api, imports_api, jobs, mcp_server
 from app.auth import AccessVerifier, capturing_user, current_user, get_db
 from app.config import Settings, get_settings
 from app.db import make_engine, make_sessionmaker
@@ -218,6 +218,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(ideas_api.router)
     app.include_router(chat_api.router)
+    app.include_router(imports_api.router)
 
     # The MCP server for the Claude app (PLAN.md §4.4). Its session manager runs in the lifespan.
     mcp, mcp_handler = mcp_server.build(app.state)

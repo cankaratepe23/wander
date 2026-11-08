@@ -15,10 +15,10 @@ from typing import Any
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session, sessionmaker
 
-from app import deep, enrich, jobs
+from app import ai, backfill, deep, enrich, jobs, nudges
 from app.config import get_settings
 from app.db import make_engine, make_sessionmaker
-from app.models import Capture
+from app.models import Capture, utcnow
 
 log = logging.getLogger("wander.worker")
 
@@ -68,6 +68,44 @@ def enrich_capture(db: Session, payload: dict[str, Any]) -> None:
         raise
 
 
+@handler("prepare_import")
+def prepare_import(db: Session, payload: dict[str, Any]) -> None:
+    settings = get_settings()
+    backfill.prepare_import(
+        db, payload, settings, enrich.Deps(deepen=None)
+    )  # no video downloads in bulk
+
+
+@handler("submit_batch")
+def submit_batch(db: Session, payload: dict[str, Any]) -> None:
+    try:
+        backfill.submit_batch(db, get_settings())
+    except ai.NotConfigured as exc:
+        raise Defer("no Anthropic API key configured") from exc
+
+
+@handler("poll_batch")
+def poll_batch(db: Session, payload: dict[str, Any]) -> None:
+    try:
+        backfill.poll_batch(db, payload, get_settings())
+    except backfill.NotDone as exc:
+        raise Defer(f"batch still {exc}", backfill.POLL_EVERY) from exc
+    except ai.NotConfigured as exc:
+        raise Defer("no Anthropic API key configured") from exc
+
+
+@handler("monthly_nudge")
+def monthly_nudge(db: Session, payload: dict[str, Any]) -> None:
+    settings = get_settings()
+    now = utcnow()
+    sent = nudges.run(db, settings, now, settings.tz)
+    log.info("monthly nudge: %s", sent or "nothing in season")
+    # Schedule next month's directly: this job is still "running", so ensure_scheduled would skip it.
+    job = jobs.enqueue(db, "monthly_nudge", {}, max_attempts=3)
+    job.run_after = nudges.next_send_time(now + timedelta(days=2), settings.tz)
+    db.commit()
+
+
 def run_one(factory: sessionmaker[Session]) -> bool:
     """Claim and run a single job. Returns True if a job was run."""
     with factory() as db:
@@ -113,6 +151,11 @@ def main() -> None:
     signal.signal(signal.SIGINT, _stop)
 
     log.info("worker started, polling every %.1fs", settings.worker_poll_seconds)
+    try:
+        with factory() as db:
+            nudges.ensure_scheduled(db, settings, utcnow(), settings.tz)
+    except OperationalError:
+        pass  # the API hasn't migrated yet; the next start will schedule it
     last_stale_check = 0.0
     while not stopping:
         try:

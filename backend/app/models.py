@@ -38,6 +38,10 @@ class Capture(Base):
     # queued | processing | done | needs_review | failed
     status: Mapped[str] = mapped_column(String(16), default="queued")
     error: Mapped[str | None] = mapped_column(Text)
+    # Backfill (PLAN.md §4.6): imported captures are read cheaply first, then sent in a batch.
+    import_id: Mapped[int | None] = mapped_column(ForeignKey("imports.id"))
+    prepared_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    batch_id: Mapped[str | None] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, onupdate=utcnow
@@ -90,6 +94,8 @@ class Idea(Base):
     notes: Mapped[str | None] = mapped_column(Text)
     ai_model: Mapped[str | None] = mapped_column(String(64))
     ai_confidence: Mapped[float | None] = mapped_column(Float)
+    # False for ideas from an import until someone keeps them (the review tray).
+    reviewed: Mapped[bool] = mapped_column(default=True, server_default="1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     creator: Mapped[User] = relationship()
@@ -137,6 +143,19 @@ class Heart(Base):
 
     idea_id: Mapped[int] = mapped_column(ForeignKey("ideas.id"), primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), primary_key=True)
+
+
+class Import(Base):
+    """One uploaded export (a WhatsApp chat, TikTok or Instagram data) being backfilled."""
+
+    __tablename__ = "imports"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    source: Mapped[str] = mapped_column(String(16))  # whatsapp | tiktok | instagram
+    filename: Mapped[str | None] = mapped_column(String(255))
+    total: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
 class Media(Base):

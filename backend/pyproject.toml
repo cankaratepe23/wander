@@ -18,6 +18,7 @@ dependencies = [
     "curl-cffi>=0.16.3",
     "instaloader>=4.15.4",
     "mcp>=2.3.0",
+    "tzdata>=2026.5",
 ]
 
 [dependency-groups]

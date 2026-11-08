@@ -61,6 +61,9 @@ class Settings(BaseSettings):
     whisper_model: str = "small"
     video_archive_max_gb: float = 5.0
 
+    # Local time zone, for when the monthly nudge goes out (the container's TZ).
+    tz: str = Field(default="UTC", validation_alias=AliasChoices("WANDER_TZ", "TZ"))
+
     # Push notifications for seasonal nudges (PLAN.md §4.5), e.g. https://ntfy.sh/your-topic
     ntfy_url: str = ""
 
