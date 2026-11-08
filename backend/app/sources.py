@@ -221,6 +221,39 @@ def ytdlp_info(url: str, settings: Settings) -> dict[str, Any]:
 
 
 HASHTAG = re.compile(r"#(\w+)", re.UNICODE)
+IG_SHORTCODE = re.compile(r"instagram\.com/(?:[^/]+/)?(?:p|reel|reels|tv)/([A-Za-z0-9_-]+)")
+
+
+def instagram_location(
+    url: str, settings: Settings
+) -> tuple[str, float | None, float | None] | None:
+    """An Instagram post's location tag, which yt-dlp doesn't expose (PLAN.md Phase 2).
+
+    Uses instaloader with the same throwaway account's cookies. Best effort: None on any failure.
+    """
+    match = IG_SHORTCODE.search(url)
+    if not match or not (
+        settings.ytdlp_cookies_file and Path(settings.ytdlp_cookies_file).is_file()
+    ):
+        return None
+    try:
+        from http.cookiejar import MozillaCookieJar
+
+        import instaloader
+
+        jar = MozillaCookieJar(str(settings.ytdlp_cookies_file))
+        jar.load(ignore_discard=True, ignore_expires=True)
+        loader = instaloader.Instaloader(
+            quiet=True, max_connection_attempts=1, download_pictures=False
+        )
+        loader.context._session.cookies.update(jar)  # noqa: SLF001 - instaloader has no public cookie API
+        loc = instaloader.Post.from_shortcode(loader.context, match.group(1)).location
+    except Exception as exc:  # noqa: BLE001
+        log.info("instaloader couldn't read %s: %s", url, exc)
+        return None
+    if loc is None or not loc.name:
+        return None
+    return loc.name, loc.lat, loc.lng
 
 
 def gather(url: str | None, settings: Settings, workdir: Path) -> Signals:
@@ -258,6 +291,15 @@ def gather(url: str | None, settings: Settings, workdir: Path) -> Signals:
                     s.notes.append(f"The page answered {r.status_code}.")
             except (httpx.HTTPError, UnsafeURL) as exc:
                 s.notes.append(f"Couldn't open the link ({exc}).")
+        loc = (
+            instagram_location(url, settings)
+            if s.platform == "instagram" and not s.location_tag
+            else None
+        )
+        if loc:
+            s.location_tag = loc[0]
+            if loc[1] is not None and loc[2] is not None:
+                s.map_hint = f"post's location tag: {loc[0]} at {loc[1]:.5f}, {loc[2]:.5f}"
         if s.platform == "google_maps":
             s.map_hint = google_maps_hint(s.final_url or url) or google_maps_hint(url)
         if s.thumbnail_url:
