@@ -55,3 +55,18 @@ The operator's deployment config (compose stack, encrypted secrets, tunnel and A
 separate **private** ops repo, never here. This repo is **public**: keep it free of secrets, hostnames
 beyond those already in `PLAN.md`, internal addresses, and personal details about the users. If a session
 has the ops repo available, follow that repo's own `CLAUDE.md` for any deploy work.
+
+## How changes ship
+
+- **Straight to `main`.** One maintainer: no pull requests or long-lived branches, unless the owner asks for one.
+  `main` is also the only branch CI builds an image from.
+- **Build, check, then ask.** Finish a change, run the tests and lint, and try anything visible on the built app.
+  Then say what changed and what wasn't verified, and ask in one line whether to commit, push and deploy.
+  The owner usually says yes right away, but each change gets its own yes; an earlier one doesn't carry over.
+- **"Deploy" is one sequence.** Commit and push here, wait for CI to finish, and only then bump the image tag to
+  `sha-<short>` in the ops repo and push that. Confirm the containers are running the new tag and healthy, then
+  report it. Don't bump to an image CI hasn't built, and check CI after every push rather than assuming it passed.
+- **Secrets never pass through the chat.** The owner puts a value in a local file and an agent moves it into the
+  ops repo's encrypted secrets by script, printing only names, lengths and yes/no checks. Windows line endings
+  can end up inside a value, so strip them and check the decrypted bytes. Don't delete the owner's files.
+- **On Windows, write scripts with the Write tool.** Bash heredocs have mangled backslash escapes and quotes here.
