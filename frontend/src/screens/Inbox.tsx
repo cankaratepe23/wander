@@ -4,7 +4,7 @@ import { emptyMix, Pile } from "../components/Pile";
 import { Chip, FAMILIES, FAMILY_LABEL, Heart, Icon } from "../components/ui";
 import { captureText, STATUS_LABEL, statusStyle, timeAgo } from "./Capture";
 
-type Filter = "all" | Family | "both" | "review";
+type Filter = "all" | Family | "both" | "review" | "imported";
 
 export function InboxScreen({
   ideas,
@@ -22,10 +22,16 @@ export function InboxScreen({
   onChanged: () => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const pending = captures.filter((c) => c.status !== "done" && c.status !== "dismissed");
+  // Imported items in progress are tracked in Settings → Import, not listed here one by one.
+  const pending = captures.filter(
+    (c) => c.status !== "done" && c.status !== "dismissed" && (c.kind !== "import" || c.status === "needs_review"),
+  );
   const review = pending.filter((c) => c.status === "needs_review" || c.status === "failed");
 
-  let shown = (only ? ideas.filter((i) => only.ids.includes(i.id)) : ideas).filter((i) => i.status !== "dismissed");
+  const unreviewed = ideas.filter((i) => !i.reviewed && i.status !== "dismissed");
+  let shown = (only ? ideas.filter((i) => only.ids.includes(i.id)) : ideas).filter(
+    (i) => i.status !== "dismissed" && (filter === "imported" ? !i.reviewed : i.reviewed),
+  );
   if (filter === "both") shown = shown.filter((i) => i.hearted_by.length >= 2);
   else if (filter !== "all" && filter !== "review") shown = shown.filter((i) => i.family === filter);
 
@@ -58,6 +64,11 @@ export function InboxScreen({
         {review.length > 0 && (
           <Chip active={filter === "review"} onClick={() => setFilter("review")}>
             Needs a look · {review.length}
+          </Chip>
+        )}
+        {unreviewed.length > 0 && (
+          <Chip active={filter === "imported"} onClick={() => setFilter("imported")}>
+            From imports · {unreviewed.length}
           </Chip>
         )}
       </div>
@@ -137,7 +148,27 @@ export function InboxScreen({
                         {p ? [p.name, p.country].filter(Boolean).join(" · ") : "No place yet"}
                       </span>
                     </span>
-                    {i.hearted_by.length > 0 && (
+                    {!i.reviewed && (
+                      <span className="flex shrink-0 gap-1.5" onClick={(e) => e.stopPropagation()}>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => api.patchIdea(i.id, { reviewed: true }).then(onChanged)}
+                          className="rounded-lg bg-accent px-2.5 py-1 text-[12px] font-semibold text-on-accent"
+                        >
+                          Keep
+                        </span>
+                        <span
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => api.patchIdea(i.id, { status: "dismissed", reviewed: true }).then(onChanged)}
+                          className="rounded-lg border border-line px-2.5 py-1 text-[12px] font-semibold text-muted"
+                        >
+                          Drop
+                        </span>
+                      </span>
+                    )}
+                    {i.reviewed && i.hearted_by.length > 0 && (
                       <span className="flex items-center gap-1 font-mono text-xs text-muted">
                         <Heart filled={i.hearted_by_me} />
                         {i.hearted_by.length >= 2 ? "both" : i.hearted_by[0]}

@@ -55,6 +55,16 @@ export interface Idea {
   source_platform: string | null;
   thumbnail: string | null;
   has_video: boolean;
+  reviewed: boolean;
+}
+
+export interface ImportProgress {
+  id: number;
+  source: "whatsapp" | "tiktok" | "instagram";
+  filename: string | null;
+  total: number;
+  counts: Record<string, number>;
+  created_at: string;
 }
 
 export type IdeaStatus = "someday" | "shortlist" | "planned" | "done" | "dismissed";
@@ -165,7 +175,7 @@ export const api = {
   ideas: () => request<Idea[]>("/api/ideas"),
   heart: (id: number) => request<Idea>(`/api/ideas/${id}/heart`, { method: "POST" }),
   map: () => request<MapPoints>("/api/map"),
-  patchIdea: (id: number, patch: Partial<Pick<Idea, "title" | "summary" | "status" | "notes" | "category">>) =>
+  patchIdea: (id: number, patch: Partial<Pick<Idea, "title" | "summary" | "status" | "notes" | "category" | "reviewed">>) =>
     request<Idea>(`/api/ideas/${id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -182,6 +192,17 @@ export const api = {
   reenrichAll: () => request<{ queued: number }>("/api/captures/reenrich-all", { method: "POST" }),
   dismiss: (captureId: number) => request<void>(`/api/captures/${captureId}/dismiss`, { method: "POST" }),
   usage: () => request<Usage>("/api/usage"),
+  imports: () => request<ImportProgress[]>("/api/imports"),
+  uploadImport: (file: File) => {
+    const form = new FormData();
+    form.set("file", file);
+    return request<ImportProgress>("/api/imports", { method: "POST", body: form });
+  },
+  nudgePreview: (send: boolean) =>
+    request<{ title: string | null; body: string | null; sent: boolean; configured: boolean }>(
+      `/api/nudges/preview?send=${send}`,
+      { method: "POST" },
+    ),
   hotspots: (level: Hotspot["level"]) => request<Hotspot[]>(`/api/hotspots?level=${level}`),
   conversations: (scope: string, scopeId?: string) =>
     request<Conversation[]>(`/api/conversations?scope=${scope}${scopeId ? `&scope_id=${encodeURIComponent(scopeId)}` : ""}`),

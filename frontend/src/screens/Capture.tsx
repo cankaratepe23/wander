@@ -58,6 +58,35 @@ export function CaptureScreen({
   const box = useRef<HTMLTextAreaElement>(null);
   const file = useRef<HTMLInputElement>(null);
   const reduce = useReducedMotion();
+  const [listening, setListening] = useState(false);
+  const recognizer = useRef<SpeechRecognitionLike | null>(null);
+  const Speech = speechRecognition();
+
+  // Voice note (PLAN.md §4.1): the browser's own speech-to-text fills the box; nothing leaves the phone
+  // until Save.
+  function toggleVoice() {
+    if (listening) {
+      recognizer.current?.stop();
+      return;
+    }
+    if (!Speech) return;
+    const r = new Speech();
+    r.lang = navigator.language || "en-US";
+    r.interimResults = false;
+    r.continuous = false;
+    r.onresult = (e) => {
+      const said = Array.from(e.results)
+        .map((res) => res[0].transcript)
+        .join(" ")
+        .trim();
+      if (said) setText((t) => (t.trim() ? `${t.trim()} ${said}` : said));
+    };
+    r.onend = () => setListening(false);
+    r.onerror = () => setListening(false);
+    recognizer.current = r;
+    setListening(true);
+    r.start();
+  }
 
   const places = new Set(ideas.flatMap((i) => i.places.map((p) => p.id))).size;
   const canSave = !saving && (text.trim().length > 0 || image !== null);
@@ -145,6 +174,20 @@ export function CaptureScreen({
           </div>
         )}
         <div className="mt-3 flex items-center gap-2">
+          {Speech && (
+            <button
+              type="button"
+              aria-label={listening ? "Stop listening" : "Say an idea"}
+              aria-pressed={listening}
+              onClick={toggleVoice}
+              className={`grid size-10 place-items-center rounded-xl border ${listening ? "border-accent bg-accent-soft text-accent-ink" : "border-line text-text"}`}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" aria-hidden="true">
+                <rect x="9" y="3" width="6" height="11" rx="3" />
+                <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             aria-label="Add a screenshot"
@@ -208,4 +251,21 @@ export function CaptureScreen({
       </section>
     </div>
   );
+}
+
+// The Web Speech API isn't in TypeScript's DOM types yet; this is the slice Capture uses.
+interface SpeechRecognitionLike {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  start(): void;
+  stop(): void;
+  onresult: ((e: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onend: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+function speechRecognition(): (new () => SpeechRecognitionLike) | null {
+  const w = window as unknown as Record<string, unknown>;
+  return (w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null) as (new () => SpeechRecognitionLike) | null;
 }
