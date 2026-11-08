@@ -16,6 +16,8 @@ export interface Capture {
   error: string | null;
   created_by: string;
   created_at: string;
+  title: string | null;
+  source: string;
 }
 
 export type Family = "food" | "nature" | "stays" | "culture";

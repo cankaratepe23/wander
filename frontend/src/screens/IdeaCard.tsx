@@ -1,6 +1,6 @@
 import { motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense, useState } from "react";
-import { api, ApiError, type Idea, type IdeaStatus } from "../api";
+import { api, ApiError, type Idea, type IdeaStatus, type Place } from "../api";
 import { FAMILY_LABEL, Heart, Icon, MonthBar } from "../components/ui";
 import { timeAgo } from "./Capture";
 
@@ -39,6 +39,12 @@ function placeLine(idea: Idea): string {
   const p = idea.places[0];
   if (!p) return "No place yet";
   return [p.name, p.city !== p.name ? p.city : null, p.country].filter(Boolean).join(" · ");
+}
+
+/** Opens the Google Maps app on phones that have it, and the website everywhere else. */
+function googleMapsUrl(p: Pick<Place, "name" | "city" | "region" | "country">): string {
+  const query = [...new Set([p.name, p.city, p.region, p.country].filter(Boolean))].join(", ");
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
 }
 
 export function IdeaCard({
@@ -192,10 +198,16 @@ export function IdeaCard({
           {idea.places.map((pl) => (
             <div key={pl.id} className="flex items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2 text-[14px]">
               <Icon name="pin" size={15} />
-              <span className="min-w-0 flex-1 truncate">
-                {pl.name}
+              <a
+                href={googleMapsUrl(pl)}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label={`Open ${pl.name} in Google Maps`}
+                className="min-w-0 flex-1 truncate text-text no-underline"
+              >
+                <span className="underline decoration-muted underline-offset-2">{pl.name}</span>
                 <span className="text-muted"> · {[pl.region, pl.country].filter(Boolean).join(", ")}</span>
-              </span>
+              </a>
               <button
                 type="button"
                 aria-label={`Remove ${pl.name}`}

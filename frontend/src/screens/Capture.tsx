@@ -2,7 +2,7 @@ import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { useRef, useState } from "react";
 import { api, ApiError, type Capture as CaptureRow, type Idea, type Me } from "../api";
 import { enqueue } from "../queue";
-import { Icon } from "../components/ui";
+import { Icon, SourceIcon } from "../components/ui";
 
 export const STATUS_LABEL: Record<CaptureRow["status"], string> = {
   queued: "Saved",
@@ -234,7 +234,15 @@ export function CaptureScreen({
                   transition={reduce ? { duration: 0.12 } : { type: "spring", stiffness: 380, damping: 30 }}
                   className="rounded-[14px] border border-line bg-surface px-3.5 py-3"
                 >
-                  <div className="line-clamp-2 text-[15px] leading-snug">{captureText(c)}</div>
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 shrink-0 text-muted">
+                      <SourceIcon source={c.source} />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="line-clamp-2 text-[15px] leading-snug">{c.title ?? captureText(c)}</div>
+                      {c.title && <div className="mt-0.5 truncate text-xs text-muted">{captureText(c)}</div>}
+                    </div>
+                  </div>
                   <div className="mt-2 flex items-center gap-2 text-xs text-muted">
                     <span className="rounded-full px-2 py-0.5 font-semibold" style={statusStyle(c.status)}>
                       {STATUS_LABEL[c.status]}

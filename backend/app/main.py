@@ -20,12 +20,12 @@ from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile  # what request.form() returns
 from starlette.routing import Route
 
-from app import chat_api, ideas_api, imports_api, jobs, mcp_server
+from app import chat_api, ideas_api, imports_api, jobs, mcp_server, sources
 from app.auth import AccessVerifier, capturing_user, current_user, get_db
 from app.config import Settings, get_settings
 from app.db import make_engine, make_sessionmaker
 from app.migrate import upgrade_to_head
-from app.models import Capture, User
+from app.models import Capture, Idea, User
 from app.schemas import CaptureIn, CaptureOut, Me
 
 log = logging.getLogger("wander.api")
@@ -50,7 +50,16 @@ def first_url(text: str | None) -> str | None:
     return match.group(0).rstrip(").,!?;:") if match else None
 
 
-def to_out(capture: Capture) -> CaptureOut:
+def source_of(capture: Capture) -> str:
+    """Where a capture came from, for the little icon next to it."""
+    if capture.url:
+        return sources.detect_platform(capture.url)
+    if capture.file_path:
+        return "image"
+    return "voice" if capture.kind == "voice" else "text"
+
+
+def to_out(capture: Capture, title: str | None = None) -> CaptureOut:
     return CaptureOut(
         id=capture.id,
         kind=capture.kind,
@@ -61,6 +70,8 @@ def to_out(capture: Capture) -> CaptureOut:
         error=capture.error,
         created_by=capture.user.display_name,
         created_at=capture.created_at,
+        title=title,
+        source=source_of(capture),
     )
 
 
@@ -208,13 +219,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def list_captures(
         limit: int = 50, _user: User = Depends(current_user), db: Session = Depends(get_db)
     ) -> list[CaptureOut]:
-        rows = db.scalars(
-            select(Capture)
-            .options(joinedload(Capture.user))
-            .order_by(Capture.created_at.desc(), Capture.id.desc())
-            .limit(max(1, min(limit, 200)))
+        rows = list(
+            db.scalars(
+                select(Capture)
+                .options(joinedload(Capture.user))
+                .order_by(Capture.created_at.desc(), Capture.id.desc())
+                .limit(max(1, min(limit, 200)))
+            )
         )
-        return [to_out(c) for c in rows]
+        titles = dict(
+            db.execute(
+                select(Idea.capture_id, Idea.title).where(Idea.capture_id.in_([c.id for c in rows]))
+            ).all()
+        )
+        return [to_out(c, titles.get(c.id)) for c in rows]
 
     app.include_router(ideas_api.router)
     app.include_router(chat_api.router)

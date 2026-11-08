@@ -78,6 +78,82 @@ export function Icon({ name, size = 20, stroke = 1.9 }: { name: keyof typeof ico
   );
 }
 
+const sourceGlyphs: Record<string, ReactNode> = {
+  tiktok: <path d="M14 4v11.5a3.5 3.5 0 1 1-3.5-3.5M14 4c.4 2.7 2.2 4.5 5 4.8" />,
+  instagram: (
+    <>
+      <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
+      <circle cx="12" cy="12" r="3.8" />
+      <path d="M17 7h.01" />
+    </>
+  ),
+  youtube: (
+    <>
+      <rect x="2.5" y="5.5" width="19" height="13" rx="4" />
+      <path d="M10.5 9.5v5l4-2.5z" />
+    </>
+  ),
+  google_maps: (
+    <>
+      <path d="M12 21s7-5.6 7-11a7 7 0 1 0-14 0c0 5.4 7 11 7 11z" />
+      <circle cx="12" cy="10" r="2.4" />
+    </>
+  ),
+  web: (
+    <>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </>
+  ),
+  image: (
+    <>
+      <rect x="3.5" y="4.5" width="17" height="15" rx="3" />
+      <circle cx="9" cy="10" r="1.5" />
+      <path d="M20.5 16l-4.5-4.5L7 19.5" />
+    </>
+  ),
+  voice: (
+    <>
+      <rect x="9" y="3.5" width="6" height="11" rx="3" />
+      <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v2.5" />
+    </>
+  ),
+  text: <path d="M5 7h14M5 12h14M5 17h9" />,
+};
+
+const SOURCE_LABEL: Record<string, string> = {
+  tiktok: "TikTok",
+  instagram: "Instagram",
+  youtube: "YouTube",
+  google_maps: "Google Maps",
+  booking: "Booking.com",
+  airbnb: "Airbnb",
+  web: "Link",
+  image: "Screenshot",
+  voice: "Voice note",
+  text: "Note",
+};
+
+/** A small mark for where a capture came from. Sites without their own mark use the link icon. */
+export function SourceIcon({ source, size = 16 }: { source: string; size?: number }) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      role="img"
+      aria-label={SOURCE_LABEL[source] ?? "Link"}
+    >
+      {sourceGlyphs[source] ?? sourceGlyphs.web}
+    </svg>
+  );
+}
+
 export function Heart({ filled, size = 14 }: { filled: boolean; size?: number }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">

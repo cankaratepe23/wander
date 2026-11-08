@@ -28,6 +28,8 @@ class CaptureOut(BaseModel):
     error: str | None
     created_by: str
     created_at: datetime
+    title: str | None = None  # the filed idea's title, once there is one
+    source: str = "text"  # tiktok | instagram | youtube | google_maps | booking | airbnb | web | image | voice | text
 
     @field_serializer("created_at")
     def _utc(self, value: datetime) -> str:

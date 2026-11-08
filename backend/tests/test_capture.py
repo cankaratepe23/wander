@@ -1,4 +1,5 @@
 from app.main import first_url
+from app.models import Idea
 from app.worker import run_one
 
 
@@ -76,3 +77,22 @@ def test_share_target_fallback_saves_and_redirects(client):
     [item] = client.get("/api/captures").json()
     assert item["kind"] == "image"
     assert item["raw_text"] == "Hidden coves\nhttps://vm.tiktok.com/ZM1/"
+
+
+def test_captures_list_shows_the_source_and_the_filed_title(client):
+    link = client.post(
+        "/api/capture", json={"text": "https://www.tiktok.com/@someone/video/123"}
+    ).json()
+    note = client.post("/api/capture", json={"text": "Lycian Way"}).json()
+    assert link["source"] == "tiktok" and link["title"] is None
+
+    with client.app.state.sessionmaker() as db:
+        db.add(Idea(capture_id=link["id"], created_by=1, title="Espresso Chalet"))
+        db.commit()
+
+    rows = {c["id"]: c for c in client.get("/api/captures").json()}
+    assert rows[link["id"]]["title"] == "Espresso Chalet"
+    assert (
+        rows[link["id"]]["url"] == "https://www.tiktok.com/@someone/video/123"
+    )  # the original stays
+    assert rows[note["id"]]["source"] == "text" and rows[note["id"]]["title"] is None
