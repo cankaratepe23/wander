@@ -17,6 +17,7 @@ dependencies = [
     "faster-whisper>=1.2.1",
     "curl-cffi>=0.16.3",
     "instaloader>=4.15.4",
+    "mcp>=2.3.0",
 ]
 
 [dependency-groups]

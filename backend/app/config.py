@@ -20,7 +20,7 @@ class Settings(BaseSettings):
     # Cloudflare Access. Both must be set in production; requests are then authenticated by
     # validating the Cf-Access-Jwt-Assertion JWT against the team's public keys.
     access_team_domain: str = ""  # e.g. "yourteam.cloudflareaccess.com"
-    access_aud: str = ""  # the Access application's AUD tag
+    access_aud: str = ""  # the Access application's AUD tag; comma-separate several (app, MCP)
 
     # Comma-separated emails allowed in. Access already enforces this; the app checks again so a
     # misconfigured Access policy can't silently open it up. Empty = trust Access alone.

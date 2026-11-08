@@ -36,7 +36,8 @@ class Principal:
 class AccessVerifier:
     def __init__(self, team_domain: str, aud: str, jwks_client: PyJWKClient | None = None):
         self.issuer = f"https://{team_domain}"
-        self.aud = aud
+        # Several applications can share one Wander (the app, and the MCP hostname): accept each AUD.
+        self.aud = [a.strip() for a in aud.split(",") if a.strip()]
         self.jwks = jwks_client or PyJWKClient(
             f"{self.issuer}/cdn-cgi/access/certs", cache_keys=True, lifespan=3600
         )

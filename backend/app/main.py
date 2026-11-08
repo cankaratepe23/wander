@@ -8,7 +8,7 @@ import logging
 import mimetypes
 import re
 import uuid
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
@@ -18,8 +18,9 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 from starlette.datastructures import UploadFile  # what request.form() returns
+from starlette.routing import Route
 
-from app import ideas_api, jobs
+from app import chat_api, ideas_api, jobs, mcp_server
 from app.auth import AccessVerifier, capturing_user, current_user, get_db
 from app.config import Settings, get_settings
 from app.db import make_engine, make_sessionmaker
@@ -93,13 +94,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         upgrade_to_head(settings.db_path)
+        stack = AsyncExitStack()
+        await stack.enter_async_context(app.state.mcp.session_manager.run())
         if settings.dev_mode:
             log.warning(
                 "DEV MODE: authentication is OFF; every request is %s", settings.dev_user_email
             )
         elif not settings.access_configured:
             log.error("Cloudflare Access is not configured; every request will be refused")
-        yield
+        try:
+            yield
+        finally:
+            await stack.aclose()
 
     app = FastAPI(
         title="Wander", lifespan=lifespan, docs_url="/api/docs", openapi_url="/api/openapi.json"
@@ -211,6 +217,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return [to_out(c) for c in rows]
 
     app.include_router(ideas_api.router)
+    app.include_router(chat_api.router)
+
+    # The MCP server for the Claude app (PLAN.md §4.4). Its session manager runs in the lifespan.
+    mcp, mcp_handler = mcp_server.build(app.state)
+    app.router.routes.append(Route("/mcp", endpoint=mcp_handler, methods=["GET", "POST", "DELETE"]))
+    app.state.mcp = mcp
 
     if settings.static_dir and Path(settings.static_dir).is_dir():
         _mount_spa(app, Path(settings.static_dir))
