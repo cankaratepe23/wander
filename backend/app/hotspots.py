@@ -100,4 +100,4 @@ def hotspots(
 def load_and_rank(db: Session, level: Level = "country", limit: int = 20) -> list[dict]:
     from app.ideas_api import load_ideas
 
-    return hotspots(load_ideas(db, 2000), level, limit=limit)
+    return hotspots(load_ideas(db), level, limit=limit)

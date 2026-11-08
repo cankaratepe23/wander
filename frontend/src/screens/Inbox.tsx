@@ -33,7 +33,7 @@ export function InboxScreen({
     (i) => i.status !== "dismissed" && (filter === "imported" ? !i.reviewed : i.reviewed),
   );
   if (filter === "both") shown = shown.filter((i) => i.hearted_by.length >= 2);
-  else if (filter !== "all" && filter !== "review") shown = shown.filter((i) => i.family === filter);
+  else if (filter !== "all" && filter !== "review" && filter !== "imported") shown = shown.filter((i) => i.family === filter);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col" style={{ paddingTop: "max(28px, env(safe-area-inset-top))" }}>

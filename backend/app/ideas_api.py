@@ -25,7 +25,10 @@ def settings_of(request: Request) -> Settings:
     return request.app.state.settings
 
 
-def load_ideas(db: Session, limit: int = 1000, idea_id: int | None = None) -> list[Idea]:
+MAX_IDEAS = 5000
+
+
+def load_ideas(db: Session, limit: int = MAX_IDEAS, idea_id: int | None = None) -> list[Idea]:
     query = (
         select(Idea)
         .options(
@@ -37,7 +40,7 @@ def load_ideas(db: Session, limit: int = 1000, idea_id: int | None = None) -> li
     )
     if idea_id is not None:
         query = query.where(Idea.id == idea_id)
-    return list(db.scalars(query.limit(max(1, min(limit, 2000)))).unique())
+    return list(db.scalars(query.limit(max(1, min(limit, MAX_IDEAS)))).unique())
 
 
 def names_of(db: Session) -> dict[int, str]:
@@ -88,7 +91,7 @@ def one(db: Session, idea_id: int, me: User) -> IdeaOut:
 
 @router.get("/ideas", response_model=list[IdeaOut])
 def list_ideas(
-    limit: int = 500, user: User = Depends(current_user), db: Session = Depends(get_db)
+    limit: int = MAX_IDEAS, user: User = Depends(current_user), db: Session = Depends(get_db)
 ) -> list[IdeaOut]:
     names = names_of(db)
     return [idea_out(db, i, user, names) for i in load_ideas(db, limit)]
@@ -211,7 +214,7 @@ def remove_place(
 def map_points(_user: User = Depends(current_user), db: Session = Depends(get_db)) -> dict:
     """One GeoJSON point per (idea, place). The client clusters them into piles per zoom."""
     features = []
-    for idea in load_ideas(db, 2000):
+    for idea in load_ideas(db):
         if idea.status == "dismissed" or not idea.reviewed:
             continue
         both = len(idea.hearts) >= 2
