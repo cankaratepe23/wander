@@ -101,12 +101,13 @@ def send_message(
                 yield sse({"type": "error", "message": "Claude isn't connected yet."})
             except Exception as exc:  # noqa: BLE001 - report, don't drop the stream
                 chat.log.exception("chat failed")
-                yield sse(
-                    {
-                        "type": "error",
-                        "message": f"Something went wrong ({type(exc).__name__}). Try again.",
-                    }
+                message = (
+                    "Claude is out of credit for now. Your ideas are safe, and chat will work "
+                    "once credit is back."
+                    if ai.out_of_credit(exc)
+                    else f"Something went wrong ({type(exc).__name__}). Try again."
                 )
+                yield sse({"type": "error", "message": message})
                 yield sse({"type": "done"})
 
     return StreamingResponse(

@@ -1,7 +1,8 @@
 """Shared Claude plumbing: the client, list prices, and per-call usage logging (PLAN.md §6)."""
 
 import logging
-from datetime import UTC, datetime
+import time
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import anthropic
@@ -21,6 +22,11 @@ PRICES: dict[str, tuple[float, float]] = {
 }
 WEB_SEARCH_USD = 10.0 / 1000
 
+# How long to leave Claude alone after a spend-limit or empty-balance error.
+CREDIT_PAUSE = timedelta(hours=1)
+_OUT_OF_CREDIT_PHRASES = ("credit balance", "usage limit", "spend limit")
+_credit_paused_until = 0.0
+
 
 class NotConfigured(RuntimeError):
     """Raised when a job needs Claude but no API key is set."""
@@ -31,6 +37,26 @@ def client(settings: Settings) -> anthropic.Anthropic:
         raise NotConfigured("no Anthropic API key configured")
     # The SDK retries 429/5xx with backoff itself; the job queue retries anything beyond that.
     return anthropic.Anthropic(api_key=settings.anthropic_api_key, max_retries=3, timeout=120)
+
+
+def out_of_credit(exc: Exception) -> bool:
+    """True if Claude refused because the workspace hit its spend limit or ran out of credit."""
+    if not isinstance(exc, anthropic.APIStatusError):
+        return False
+    if exc.status_code == 402:
+        return True
+    text = str(exc).lower()
+    return exc.status_code in (400, 403, 429) and any(p in text for p in _OUT_OF_CREDIT_PHRASES)
+
+
+def pause_for_credit() -> None:
+    """Hold Claude jobs for a while, so waiting captures aren't all fetched again just to be refused."""
+    global _credit_paused_until
+    _credit_paused_until = time.monotonic() + CREDIT_PAUSE.total_seconds()
+
+
+def credit_paused() -> bool:
+    return time.monotonic() < _credit_paused_until
 
 
 def cost(model: str, usage: Any, *, batch: bool = False) -> float:

@@ -42,6 +42,13 @@ class Defer(Exception):  # noqa: N818 - it's a signal, not an error
         self.delay = delay
 
 
+OUT_OF_CREDIT = "Saved. Claude is out of credit, so this will be filed once credit is back."
+
+
+def wait_for_credit() -> Defer:
+    return Defer("Anthropic spend limit reached or credit ran out", ai.CREDIT_PAUSE)
+
+
 @handler("enrich_capture")
 def enrich_capture(db: Session, payload: dict[str, Any]) -> None:
     """Run the enrichment pipeline (app/enrich.py) for one capture."""
@@ -55,16 +62,26 @@ def enrich_capture(db: Session, payload: dict[str, Any]) -> None:
         capture.error = "Saved. It will be filed once Claude is connected."
         db.commit()
         raise Defer("no Anthropic API key configured")
+    if ai.credit_paused():
+        capture.status = "queued"
+        capture.error = OUT_OF_CREDIT
+        db.commit()
+        raise wait_for_credit()
     try:
         enrich.run(
             db, capture, settings, enrich.Deps(deepen=deep.deepen if settings.deep_parse else None)
         )
-    except Exception:
+    except Exception as exc:
         db.rollback()
         capture = db.get(Capture, payload["capture_id"])
         if capture is not None and capture.status == "processing":
             capture.status = "queued"  # the job retries; show it as waiting, not stuck
+            if ai.out_of_credit(exc):
+                capture.error = OUT_OF_CREDIT
             db.commit()
+        if ai.out_of_credit(exc):
+            ai.pause_for_credit()
+            raise wait_for_credit() from exc
         raise
 
 
@@ -78,10 +95,17 @@ def prepare_import(db: Session, payload: dict[str, Any]) -> None:
 
 @handler("submit_batch")
 def submit_batch(db: Session, payload: dict[str, Any]) -> None:
+    if ai.credit_paused():
+        raise wait_for_credit()
     try:
         backfill.submit_batch(db, get_settings())
     except ai.NotConfigured as exc:
         raise Defer("no Anthropic API key configured") from exc
+    except Exception as exc:
+        if ai.out_of_credit(exc):
+            ai.pause_for_credit()
+            raise wait_for_credit() from exc
+        raise
 
 
 @handler("poll_batch")
@@ -92,6 +116,10 @@ def poll_batch(db: Session, payload: dict[str, Any]) -> None:
         raise Defer(f"batch still {exc}", backfill.POLL_EVERY) from exc
     except ai.NotConfigured as exc:
         raise Defer("no Anthropic API key configured") from exc
+    except Exception as exc:
+        if ai.out_of_credit(exc):
+            raise wait_for_credit() from exc
+        raise
 
 
 @handler("monthly_nudge")

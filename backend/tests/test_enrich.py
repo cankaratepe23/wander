@@ -1,8 +1,11 @@
 from types import SimpleNamespace
 
+import anthropic
+import httpx
 import pytest
 
 from app import ai, enrich, jobs, sources
+from app.config import get_settings
 from app.geocode import Hit, hit_from
 from app.models import AiUsage, Capture, Idea, Job, Place, User
 from app.sources import Signals
@@ -139,6 +142,56 @@ def test_worker_defers_until_an_api_key_exists(client, settings):
         assert job.status == "queued" and job.attempts == 0
         cap = db.get(Capture, r.json()["id"])
         assert cap.status == "queued" and "Claude" in cap.error
+
+
+def api_error(status: int, message: str) -> anthropic.APIStatusError:
+    request = httpx.Request("POST", "https://api.anthropic.com/v1/messages")
+    return anthropic.APIStatusError(
+        message, response=httpx.Response(status, request=request), body=None
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "message", "expected"),
+    [
+        (402, "Payment required", True),
+        (400, "Your credit balance is too low to access the Anthropic API.", True),
+        (400, "You have reached your specified API usage limits.", True),
+        (429, "You have reached your workspace spend limit.", True),
+        (400, "messages: at least one message is required", False),
+        (429, "This request would exceed your rate limit.", False),
+    ],
+)
+def test_out_of_credit_is_told_apart_from_other_errors(status, message, expected):
+    assert ai.out_of_credit(api_error(status, message)) is expected
+
+
+def test_out_of_credit_waits_without_using_up_attempts(client, monkeypatch):
+    monkeypatch.setattr(ai, "_credit_paused_until", 0.0)
+    monkeypatch.setenv("WANDER_ANTHROPIC_API_KEY", "test-key")
+    get_settings.cache_clear()
+    calls = []
+
+    def refuse(db, capture, settings, deps):
+        calls.append(capture.id)
+        capture.status = "processing"
+        db.commit()
+        raise api_error(400, "Your credit balance is too low.")
+
+    monkeypatch.setattr(enrich, "run", refuse)
+    first = client.post("/api/capture", json={"text": "Cappadocia balloons"}).json()["id"]
+    second = client.post("/api/capture", json={"text": "Lycian Way"}).json()["id"]
+    factory = client.app.state.sessionmaker
+    assert run_one(factory) and run_one(factory)
+    assert not run_one(factory)  # both are waiting, not due yet
+
+    assert calls == [first]  # the second one wasn't fetched just to be refused
+    with factory() as db:
+        for job in db.query(Job):
+            assert job.status == "queued" and job.attempts == 0
+        for capture_id in (first, second):
+            cap = db.get(Capture, capture_id)
+            assert cap.status == "queued" and "credit" in cap.error
 
 
 def test_clean_clamps_values():
