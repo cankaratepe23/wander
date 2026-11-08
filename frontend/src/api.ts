@@ -82,6 +82,42 @@ export interface MapPoints {
   features: { type: "Feature"; geometry: { type: "Point"; coordinates: [number, number] }; properties: MapPointProps }[];
 }
 
+export interface Hotspot {
+  name: string;
+  within: string | null;
+  level: "country" | "region" | "city";
+  ideas: number;
+  both: number;
+  mix: Record<Family, number>;
+  best_months: number[];
+  idea_ids: number[];
+  lat: number;
+  lng: number;
+  heat: number;
+}
+
+export interface Conversation {
+  id: number;
+  scope: "idea" | "place" | "region" | "global";
+  scope_id: string | null;
+  title: string | null;
+  created_at: string;
+}
+
+export interface ChatMessage {
+  id: number;
+  role: "user" | "assistant";
+  text: string;
+  steps?: string[];
+}
+
+export type ChatEvent =
+  | { type: "text"; text: string }
+  | { type: "tool"; label: string }
+  | { type: "changed" }
+  | { type: "error"; message: string }
+  | { type: "done" };
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -146,4 +182,50 @@ export const api = {
   reenrichAll: () => request<{ queued: number }>("/api/captures/reenrich-all", { method: "POST" }),
   dismiss: (captureId: number) => request<void>(`/api/captures/${captureId}/dismiss`, { method: "POST" }),
   usage: () => request<Usage>("/api/usage"),
+  hotspots: (level: Hotspot["level"]) => request<Hotspot[]>(`/api/hotspots?level=${level}`),
+  conversations: (scope: string, scopeId?: string) =>
+    request<Conversation[]>(`/api/conversations?scope=${scope}${scopeId ? `&scope_id=${encodeURIComponent(scopeId)}` : ""}`),
+  newConversation: (scope: string, scopeId?: string) =>
+    request<Conversation>("/api/conversations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scope, scope_id: scopeId ?? null }),
+    }),
+  conversation: (id: number) => request<Conversation & { messages: ChatMessage[] }>(`/api/conversations/${id}`),
+  /** Send a chat message and call onEvent for each streamed event (Server-Sent Events). */
+  async chat(id: number, text: string, onEvent: (e: ChatEvent) => void): Promise<void> {
+    const res = await fetch(`/api/conversations/${id}/messages`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok || !res.body) {
+      let detail = res.statusText;
+      try {
+        detail = (await res.json()).detail ?? detail;
+      } catch {
+        /* not JSON */
+      }
+      throw new ApiError(res.status, detail);
+    }
+    const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+    let buffer = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      let cut;
+      while ((cut = buffer.indexOf("\n\n")) >= 0) {
+        const frame = buffer.slice(0, cut);
+        buffer = buffer.slice(cut + 2);
+        const data = frame
+          .split("\n")
+          .filter((l) => l.startsWith("data: "))
+          .map((l) => l.slice(6))
+          .join("\n");
+        if (data) onEvent(JSON.parse(data) as ChatEvent);
+      }
+    }
+  },
 };

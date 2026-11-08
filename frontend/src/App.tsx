@@ -6,6 +6,7 @@ import { flush, pending } from "./queue";
 import { Settings } from "./screens/Settings";
 import type { PileData } from "./map/GlobeMap";
 import { CaptureScreen } from "./screens/Capture";
+import { ChatScreen, scopeFromHash } from "./screens/Chat";
 import { IdeaCard } from "./screens/IdeaCard";
 import { InboxScreen } from "./screens/Inbox";
 
@@ -13,7 +14,7 @@ import { InboxScreen } from "./screens/Inbox";
 // so capturing an idea never waits for it.
 const GlobeScreen = lazy(() => import("./screens/Globe").then((m) => ({ default: m.GlobeScreen })));
 
-const TABS: Tab[] = ["inbox", "capture", "globe"];
+const TABS: Tab[] = ["inbox", "capture", "globe", "chat"];
 const EMPTY_MAP: MapPoints = { type: "FeatureCollection", features: [] };
 
 function tabFromHash(): Tab {
@@ -99,14 +100,19 @@ export default function App() {
     return () => clearInterval(t);
   }, [filing, refresh]);
 
+  // The hash's query (e.g. which idea a chat is about) matters too, not just the tab.
+  const [, setHashKey] = useState(location.hash);
   useEffect(() => {
-    const onHash = () => setTab(tabFromHash());
+    const onHash = () => {
+      setTab(tabFromHash());
+      setHashKey(location.hash);
+    };
     addEventListener("hashchange", onHash);
     return () => removeEventListener("hashchange", onHash);
   }, []);
 
-  const go = (t: Tab) => {
-    location.hash = `#/${t}`;
+  const go = (t: Tab, query = "") => {
+    location.hash = `#/${t}${query}`;
     setTab(t);
   };
 
@@ -166,7 +172,12 @@ export default function App() {
       )}
       {tab === "globe" && (
         <Suspense fallback={<div className="flex-1" aria-busy="true" />}>
-          <GlobeScreen points={points} ideas={ideas} onOpenPile={openPile} />
+          <GlobeScreen
+            points={points}
+            ideas={ideas}
+            onOpenPile={openPile}
+            onChat={(region) => go("chat", region ? `?region=${encodeURIComponent(region)}` : "")}
+          />
         </Suspense>
       )}
       {(outbox.left > 0 || toast) && (
@@ -181,13 +192,20 @@ export default function App() {
               : `${outbox.left} waiting to be sent.`)}
         </div>
       )}
-      <BottomNav
+      {tab === "chat" && (
+        <ChatScreen
+          scope={scopeFromHash(ideas)}
+          onBack={() => (history.length > 1 ? history.back() : go("globe"))}
+          onChanged={refresh}
+        />
+      )}
+      {tab !== "chat" && <BottomNav
         tab={tab}
         onTab={(t) => {
           if (t !== "inbox") setOnly(null);
           go(t);
         }}
-      />
+      />}
       <AnimatePresence>
         {open && (
           <IdeaCard

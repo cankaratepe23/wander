@@ -19,6 +19,12 @@ export interface PileData {
 }
 
 const SOURCE = "ideas";
+const HEAT_SOURCE = "ideas-heat";
+
+function hexA(hex: string, alpha: number): string {
+  const n = parseInt(hex.replace("#", ""), 16);
+  return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`;
+}
 const CLUSTER_RADIUS = 44; // px, docs/design/meridian.md §7
 
 /** Name a group of points by the lowest admin level they all share: city, then region, then country. */
@@ -88,18 +94,31 @@ async function computePiles(map: MLMap): Promise<PileData[]> {
   return Promise.all(out);
 }
 
+export interface Focus {
+  lng: number;
+  lat: number;
+  zoom: number;
+}
+
 export function GlobeMap({
   points,
   onPiles,
   onSelect,
+  heat = false,
+  focus,
 }: {
   points: MapPoints;
   onPiles?: (piles: PileData[]) => void;
   onSelect?: (pile: PileData) => void;
+  /** Show where ideas concentrate as flat stepped bands instead of piles. */
+  heat?: boolean;
+  /** Fly the camera here whenever this object changes. */
+  focus?: Focus | null;
 }) {
   const box = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const pointsRef = useRef(points);
+  const heatRef = useRef(heat);
   const markers = useRef(new Map<string, { marker: maplibregl.Marker; el: HTMLDivElement }>());
   const [piles, setPiles] = useState<PileData[]>([]);
   const onPilesRef = useRef(onPiles);
@@ -140,6 +159,34 @@ export function GlobeMap({
       });
       // querySourceFeatures needs the source's tiles loaded, which needs a layer that uses it.
       map.addLayer({ id: "ideas-hit", type: "circle", source: SOURCE, paint: { "circle-radius": 0, "circle-opacity": 0 } });
+      // The heat layer reads unclustered points. Its colour ramp is stepped, so density shows as flat
+      // contour bands in the accent colour, not a soft glow (docs/design/meridian.md §1).
+      map.addSource(HEAT_SOURCE, { type: "geojson", data: pointsRef.current });
+      const accent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+      map.addLayer({
+        id: "ideas-heat",
+        type: "heatmap",
+        source: HEAT_SOURCE,
+        layout: { visibility: heatRef.current ? "visible" : "none" },
+        paint: {
+          "heatmap-radius": ["interpolate", ["linear"], ["zoom"], 0, 18, 6, 40],
+          "heatmap-intensity": ["interpolate", ["linear"], ["zoom"], 0, 1, 6, 2],
+          "heatmap-color": [
+            "step",
+            ["heatmap-density"],
+            "rgba(0,0,0,0)",
+            0.08,
+            hexA(accent, 0.14),
+            0.3,
+            hexA(accent, 0.3),
+            0.55,
+            hexA(accent, 0.5),
+            0.8,
+            hexA(accent, 0.75),
+          ],
+          "heatmap-opacity": 1,
+        },
+      });
     };
     map.on("style.load", addSource);
     map.on("moveend", update);
@@ -163,7 +210,18 @@ export function GlobeMap({
   useEffect(() => {
     pointsRef.current = points;
     (mapRef.current?.getSource(SOURCE) as GeoJSONSource | undefined)?.setData(points);
+    (mapRef.current?.getSource(HEAT_SOURCE) as GeoJSONSource | undefined)?.setData(points);
   }, [points]);
+
+  useEffect(() => {
+    heatRef.current = heat;
+    const map = mapRef.current;
+    if (map?.getLayer("ideas-heat")) map.setLayoutProperty("ideas-heat", "visibility", heat ? "visible" : "none");
+  }, [heat]);
+
+  useEffect(() => {
+    if (focus) mapRef.current?.flyTo({ center: [focus.lng, focus.lat], zoom: focus.zoom, duration: 1200, essential: true });
+  }, [focus]);
 
   // Keep one MapLibre marker per pile; React renders into each marker's element through a portal.
   const map = mapRef.current;
@@ -208,7 +266,7 @@ export function GlobeMap({
   return (
     <div className="relative size-full">
       <div ref={box} className="size-full" />
-      {piles.map((p) => {
+      {!heat && piles.map((p) => {
         const slot = markers.current.get(p.key);
         if (!slot) return null;
         return createPortal(

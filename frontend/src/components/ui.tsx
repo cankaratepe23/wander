@@ -9,7 +9,7 @@ export const FAMILY_LABEL: Record<Family, string> = {
   culture: "Culture",
 };
 
-export type Tab = "inbox" | "capture" | "globe";
+export type Tab = "inbox" | "capture" | "globe" | "chat";
 
 const icons = {
   inbox: <path d="M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6H3v-6z" />,
@@ -143,10 +143,23 @@ export function MonthBar({ best, good }: { best: number[]; good: number[] }) {
 }
 
 const NAMES = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** "Apr–Jun", "Apr, Nov", "Dec–Mar": consecutive runs, wrapping around the new year. */
 export function monthRange(months: number[]): string {
-  if (!months.length) return "";
-  const s = [...months].sort((a, b) => a - b);
-  return s.length === 1 ? NAMES[s[0] - 1] : `${NAMES[s[0] - 1]}–${NAMES[s[s.length - 1] - 1]}`;
+  const set = new Set(months.filter((m) => m >= 1 && m <= 12));
+  if (!set.size) return "";
+  if (set.size === 12) return "all year";
+  // Start just after a month that isn't in the set, so a Dec–Jan run stays together.
+  let start = 1;
+  while (!(set.has(start) && !set.has(start === 1 ? 12 : start - 1))) start++;
+  const runs: [number, number][] = [];
+  for (let i = 0; i < 12; i++) {
+    const m = ((start - 1 + i) % 12) + 1;
+    if (!set.has(m)) continue;
+    const last = runs[runs.length - 1];
+    if (last && (last[1] % 12) + 1 === m) last[1] = m;
+    else runs.push([m, m]);
+  }
+  return runs.map(([a, b]) => (a === b ? NAMES[a - 1] : `${NAMES[a - 1]}–${NAMES[b - 1]}`)).join(", ");
 }
 function describeMonths(best: number[], good: number[]): string {
   const parts = [];
