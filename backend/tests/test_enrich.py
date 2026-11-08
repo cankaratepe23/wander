@@ -225,3 +225,18 @@ def test_defer_does_not_use_up_attempts(db):
     jobs.defer(db, claimed.id, timedelta(minutes=5), "later")
     db.refresh(job)
     assert job.status == "queued" and job.attempts == 0 and job.last_error == "later"
+
+
+def test_same_link_twice_hearts_the_existing_idea(db, settings):
+    url = "https://vm.tiktok.com/ZM1abc/"
+    first = make_capture(db, text=None, url=url)
+    deps, calls = fake_deps(
+        understanding(), signals=Signals(platform="tiktok", url=url, caption="📍 Kaş")
+    )
+    idea = enrich.run(db, first, settings, deps)
+    second = make_capture(db, text="look!", url=url)
+    assert enrich.run(db, second, settings, deps) is None
+    assert calls["understand"] == 1  # no second Claude call
+    assert second.status == "done" and "Already saved" in second.error
+    db.refresh(idea)
+    assert len(idea.hearts) == 1 and db.query(Idea).count() == 1

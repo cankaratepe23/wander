@@ -23,6 +23,18 @@ const PLATFORM: Record<string, string> = {
   web: "Web page",
 };
 
+/** The platform's own embed player for a saved post, when the link says which post it is. */
+function embedUrl(url: string | null): { src: string; tall: boolean } | null {
+  if (!url) return null;
+  const tiktok = url.match(/tiktok\.com\/@[^/]+\/video\/(\d+)/);
+  if (tiktok) return { src: `https://www.tiktok.com/embed/v2/${tiktok[1]}`, tall: true };
+  const insta = url.match(/instagram\.com\/(?:[^/]+\/)?(p|reel|reels|tv)\/([A-Za-z0-9_-]+)/);
+  if (insta) return { src: `https://www.instagram.com/${insta[1] === "reels" ? "reel" : insta[1]}/${insta[2]}/embed`, tall: true };
+  const yt = url.match(/(?:youtube\.com\/(?:watch\?v=|shorts\/)|youtu\.be\/)([A-Za-z0-9_-]{6,})/);
+  if (yt) return { src: `https://www.youtube-nocookie.com/embed/${yt[1]}`, tall: url.includes("/shorts/") };
+  return null;
+}
+
 function placeLine(idea: Idea): string {
   const p = idea.places[0];
   if (!p) return "No place yet";
@@ -49,6 +61,8 @@ export function IdeaCard({
   const [placeQuery, setPlaceQuery] = useState("");
   const [placeError, setPlaceError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [watching, setWatching] = useState(false);
+  const embed = embedUrl(idea.source_url);
 
   const patch = (body: Parameters<typeof api.patchIdea>[1]) => api.patchIdea(idea.id, body).then(onChange).catch(() => {});
 
@@ -220,6 +234,32 @@ export function IdeaCard({
             </span>
           )}
         </div>
+
+        {embed && (
+          <div className="mt-2 flex flex-col gap-1.5">
+            <span className="t-label text-muted">The original</span>
+            {watching ? (
+              <iframe
+                src={embed.src}
+                title="The original post"
+                className="w-full rounded-[14px] border border-line bg-surface"
+                style={{ height: embed.tall ? 560 : 220 }}
+                allow="encrypted-media; picture-in-picture; fullscreen"
+                sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
+                loading="lazy"
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setWatching(true)}
+                className="flex h-11 items-center justify-center gap-2 rounded-[14px] border border-line bg-surface text-sm font-semibold text-text"
+              >
+                {idea.thumbnail && <img src={idea.thumbnail} alt="" className="size-7 rounded-md object-cover" />}
+                Watch it here
+              </button>
+            )}
+          </div>
+        )}
 
         <div className="mt-2 flex flex-col gap-1.5">
           <label htmlFor="idea-notes" className="t-label text-muted">

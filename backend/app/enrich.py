@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app import geocode, sources, understand
 from app.config import Settings
-from app.models import Capture, Idea, IdeaPlace, Media
+from app.models import Capture, Heart, Idea, IdeaPlace, Media
 from app.sources import Signals
 from app.understand import Understanding
 
@@ -65,8 +65,17 @@ def run(db: Session, capture: Capture, settings: Settings, deps: Deps | None = N
 def prepare(
     db: Session, capture: Capture, settings: Settings, deps: Deps | None = None
 ) -> Prepared | None:
-    """Steps 1-2: gather signals (and deep-parse videos). Returns None if the capture was parked."""
+    """Steps 1-2: gather signals (and deep-parse videos). Returns None if the capture needs no Claude call
+    (parked, or the same link was already filed)."""
     deps = deps or Deps()
+    if same := already_filed(db, capture):
+        # Saved twice (often once by each person): count it as interest in the existing idea, not a duplicate.
+        if db.get(Heart, (same.id, capture.user_id)) is None:
+            db.add(Heart(idea_id=same.id, user_id=capture.user_id))
+        capture.status = "done"
+        capture.error = f"Already saved as “{same.title}”, so it was hearted for you instead."
+        db.commit()
+        return None
     capture.status = "processing"
     capture.error = None
     db.commit()
@@ -87,6 +96,18 @@ def prepare(
         park(db, capture, "Couldn't read anything from this link. " + " ".join(signals.notes))
         return None
     return Prepared(signals, images)
+
+
+def already_filed(db: Session, capture: Capture) -> Idea | None:
+    """An idea already filed from another capture of exactly the same link, if any."""
+    if not capture.url:
+        return None
+    return db.scalar(
+        select(Idea)
+        .join(Capture, Idea.capture_id == Capture.id)
+        .where(Capture.url == capture.url, Capture.id != capture.id, Idea.status != "dismissed")
+        .limit(1)
+    )
 
 
 def images_for(capture: Capture, settings: Settings, signals: Signals) -> list[Path]:
